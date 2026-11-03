@@ -168,7 +168,7 @@
     "commandsPlayersStatusDesc": "Szukaj graczy online, offline lub dowolnych.",
     "commandsRecycleDesc": "Wyświetl wynik recyklingu przedmiotu.",
     "commandsRecycleQuantityDesc": "Liczba przedmiotów do recyklingu.",
-    "commandsRecycleRecyclerTypeDesc": "Typ recyclera (recycler, shredder, safe-zone-recycler, red-power-plant-recycler, charged-green-recycler).",
+    "commandsRecycleRecyclerTypeDesc": "Typ recyclera (recycler, shredder, safe zone, red power plant, charged green).",
     "commandsResearchDesc": "Wyświetl koszt badania przedmiotu.",
     "commandsResetAlarmsDesc": "Zresetuj kanał alarmów.",
     "commandsResetDesc": "Zresetuj kanały Discorda.",

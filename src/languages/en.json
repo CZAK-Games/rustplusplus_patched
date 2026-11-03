@@ -231,7 +231,7 @@
     "commandsPlayersStatusDesc": "Search for players that are online/offline/any.",
     "commandsRecycleDesc": "Display the output of recycling an item.",
     "commandsRecycleQuantityDesc": "The quantity of items to recycle.",
-    "commandsRecycleRecyclerTypeDesc": "The recycler type (recycler, shredder, safe-zone-recycler, red-power-plant-recycler, charged-green-recycler).",
+    "commandsRecycleRecyclerTypeDesc": "The recycler type (recycler, shredder, safe zone, red power plant, charged green).",
     "commandsResearchDesc": "Display the cost to research an item.",
     "commandsResetAlarmsDesc": "Reset alarms channel.",
     "commandsResetDesc": "Reset Discord channels.",
