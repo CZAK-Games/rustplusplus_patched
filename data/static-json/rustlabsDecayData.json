@@ -396,6 +396,18 @@
       "hp": 100,
       "hpString": "100"
     },
+    "1143376304": {
+      "decay": 28800,
+      "decayString": "8 hours",
+      "decayOutside": null,
+      "decayOutsideString": null,
+      "decayInside": null,
+      "decayInsideString": null,
+      "decayUnderwater": null,
+      "decayUnderwaterString": null,
+      "hp": 100,
+      "hpString": "100"
+    },
     "1145722690": {
       "decay": null,
       "decayString": null,
@@ -419,18 +431,6 @@
       "decayUnderwaterString": null,
       "hp": 250,
       "hpString": "250"
-    },
-    "1174484438": {
-      "decay": 172800,
-      "decayString": "48 hours",
-      "decayOutside": null,
-      "decayOutsideString": null,
-      "decayInside": null,
-      "decayInsideString": null,
-      "decayUnderwater": null,
-      "decayUnderwaterString": null,
-      "hp": 100,
-      "hpString": "100"
     },
     "1177596584": {
       "decay": 28800,
@@ -972,6 +972,18 @@
       "hp": 300,
       "hpString": "300"
     },
+    "-1814195745": {
+      "decay": 28800,
+      "decayString": "8 hours",
+      "decayOutside": null,
+      "decayOutsideString": null,
+      "decayInside": null,
+      "decayInsideString": null,
+      "decayUnderwater": null,
+      "decayUnderwaterString": null,
+      "hp": 100,
+      "hpString": "100"
+    },
     "-478923685": {
       "decay": 43200,
       "decayString": "12 hours",
@@ -1043,6 +1055,18 @@
       "decayUnderwaterString": null,
       "hp": 200,
       "hpString": "200"
+    },
+    "-1661343913": {
+      "decay": 345600,
+      "decayString": "96 hours",
+      "decayOutside": null,
+      "decayOutsideString": null,
+      "decayInside": null,
+      "decayInsideString": null,
+      "decayUnderwater": null,
+      "decayUnderwaterString": null,
+      "hp": 500,
+      "hpString": "500"
     },
     "-1113501606": {
       "decay": 345600,
@@ -1320,6 +1344,30 @@
       "hp": 250,
       "hpString": "250"
     },
+    "-1019111952": {
+      "decay": 28800,
+      "decayString": "8 hours",
+      "decayOutside": null,
+      "decayOutsideString": null,
+      "decayInside": null,
+      "decayInsideString": null,
+      "decayUnderwater": null,
+      "decayUnderwaterString": null,
+      "hp": 300,
+      "hpString": "300"
+    },
+    "-883975138": {
+      "decay": 28800,
+      "decayString": "8 hours",
+      "decayOutside": null,
+      "decayOutsideString": null,
+      "decayInside": null,
+      "decayInsideString": null,
+      "decayUnderwater": null,
+      "decayUnderwaterString": null,
+      "hp": 300,
+      "hpString": "300"
+    },
     "-1824943010": {
       "decay": 86400,
       "decayString": "24 hours",
@@ -1331,6 +1379,18 @@
       "decayUnderwaterString": null,
       "hp": 50,
       "hpString": "50"
+    },
+    "-1018085504": {
+      "decay": 345600,
+      "decayString": "96 hours",
+      "decayOutside": null,
+      "decayOutsideString": null,
+      "decayInside": null,
+      "decayInsideString": null,
+      "decayUnderwater": null,
+      "decayUnderwaterString": null,
+      "hp": 100,
+      "hpString": "100"
     },
     "-1992717673": {
       "decay": 28800,
@@ -1557,8 +1617,8 @@
       "decayInsideString": null,
       "decayUnderwater": null,
       "decayUnderwaterString": null,
-      "hp": 200,
-      "hpString": "200"
+      "hp": 150,
+      "hpString": "150"
     },
     "-948291630": {
       "decay": 28800,
@@ -3315,6 +3375,30 @@
       "decayUnderwaterString": null,
       "hp": 275,
       "hpString": "275"
+    },
+    "3 Module Vehicle": {
+      "decay": null,
+      "decayString": null,
+      "decayOutside": 51840,
+      "decayOutsideString": "14 hours 24 min",
+      "decayInside": 518400,
+      "decayInsideString": "144 hours",
+      "decayUnderwater": null,
+      "decayUnderwaterString": null,
+      "hp": null,
+      "hpString": null
+    },
+    "4 Module Vehicle": {
+      "decay": null,
+      "decayString": null,
+      "decayOutside": 51840,
+      "decayOutsideString": "14 hours 24 min",
+      "decayInside": 518400,
+      "decayInsideString": "144 hours",
+      "decayUnderwater": null,
+      "decayUnderwaterString": null,
+      "hp": null,
+      "hpString": null
     }
   }
 }

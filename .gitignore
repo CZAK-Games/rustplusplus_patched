@@ -5,6 +5,8 @@ credentials
 maps
 logs
 temp
+scripts/rustlabs/
+scripts/rustlabs_run.log
 data/staticData.sqlite-shm
 data/staticData.sqlite-wal
 data/runtimeData.sqlite
