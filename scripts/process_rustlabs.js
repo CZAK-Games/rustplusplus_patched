@@ -38,6 +38,12 @@ catch (error) {
 const SLEEP_TIMEOUT_MS = 2000;
 const OUTPUT_DIRECTORY = Path.join(__dirname, 'rustlabs');
 const DEFAULT_TIMEOUT_MS = 30000;
+
+/* Partial results are written every N processed items, so a crash/Cloudflare block does not throw
+   away the whole run. RPP_RUSTLABS_RESUME=true continues from the last saved progress file. */
+const SAVE_EVERY_ITEMS = Number.parseInt(process.env.RPP_RUSTLABS_SAVE_EVERY || '100', 10);
+const RESUME = (process.env.RPP_RUSTLABS_RESUME || '').toLowerCase() === 'true';
+const PROGRESS_FILE = Path.join(OUTPUT_DIRECTORY, '.progress.json');
 const REQUEST_TIMEOUT_MS = Number.parseInt(process.env.RPP_RUSTLABS_TIMEOUT_MS || `${DEFAULT_TIMEOUT_MS}`, 10);
 const CHALLENGE_WAIT_MS = Number.parseInt(process.env.RPP_RUSTLABS_CHALLENGE_WAIT_MS || '180000', 10);
 const USE_PROXY = (process.env.RPP_RUSTLABS_USE_PROXY || '').toLowerCase() === 'true';
@@ -49,6 +55,9 @@ const BROWSER_USER_AGENT = (process.env.RPP_RUSTLABS_USER_AGENT ||
 
 const COOKIE_HEADER = (process.env.RPP_RUSTLABS_COOKIE || '').trim();
 const CF_CLEARANCE = (process.env.RPP_RUSTLABS_CF_CLEARANCE || '').trim();
+
+/* DEBUG: set RPP_DEBUG_ITEM=garage-door to process only that item, print the parsed result and save its HTML. */
+const DEBUG_ITEM = (process.env.RPP_DEBUG_ITEM || '').trim();
 
 const RUSTLABS_ALL_ITEMS_URL = 'https://wiki.rustclash.com/group=itemlist';
 const RUSTLABS_ITEM_URL = 'https://wiki.rustclash.com/item/';
@@ -76,12 +85,22 @@ const DEFAULT_BROWSER_PATHS = [
     Path.join(PROGRAM_FILES_X86, 'Google', 'Chrome', 'Application', 'chrome.exe')
 ];
 
+/* Recycler slugs that should be merged into one key (rustclash uses different slugs than rustlabs). */
+const RECYCLER_ALIASES = {
+    'recycler': 'recycler',
+    'shredder': 'shredder',
+    'safe-zone-recycler': 'safe-zone-recycler',
+    'safezone-recycler': 'safe-zone-recycler',
+    'safe-zone_recycler': 'safe-zone-recycler',
+    'safezonerecycler': 'safe-zone-recycler'
+};
+
 
 const RUSTLABS_ALL_ITEMS_REGEX = /<a\shref="\/item\/(.*?)"\sclass.*?img\ssrc=.*?img\/.*?\/(.*?)\.png"\salt="(.*?)"/gm
 const RUSTLABS_ITEM_RECYCLE_AREA_REGEX = /Recycler<\/th>(\n|.)*?<\/table>/gm
 const RUSTLABS_ITEM_RECYCLE_ROW_REGEX = /<td class="left">(\n|.)*?<\/tr>/gm
 const RUSTLABS_ITEM_RECYCLE_ITEM_REGEX = /\/entity\/(.*?)"/gm
-const RUSTLABS_ITEM_RECYCLE_ITEM_EFFICIENCY_REGEX = /<td\sdata-value="(.*?)">.*?%<\/td>/gm
+const RUSTLABS_ITEM_RECYCLE_ITEM_EFFICIENCY_REGEX = /<td\sdata-value="([^"]*)">[^<]*%<\/td>/gm
 const RUSTLABS_ITEM_RECYCLE_OUTPUT_ITEMS_REGEX = /<a\shref.*?img\/.*?\/(.*?)\.png.*?alt="(.*?)".*?text-in-icon">(.*?)<\/span><\/a>/gm
 
 const RUSTLABS_ITEM_CRAFT_AREA_REGEX = /data-name="craft"\sclass="tab-page(\n|.)*?<table\sclass(\n|.)*?<\/table>/gm
@@ -112,7 +131,15 @@ const RUSTLABS_ITEM_DURABILITY_QUANTITY_DATA_VALUE_REGEX = /<td\sclass="no-paddi
 const RUSTLABS_ITEM_DURABILITY_QUANTITY_APPROX_REGEX = /Approximate\sQuantity">(.*?)</gm
 const RUSTLABS_ITEM_DURABILITY_QUANTITY_GUNS_REGEX =
     /<img\ssrc=".*?\/img\/.*?\/(.*?)\.png"\salt="(.*?)"\sclass="icon-in-text">(.*?)</gm
-const RUSTLABS_ITEM_DURABILITY_TIME_REGEX = /<td\sdata-value="(.*?)">(.*?sec|.*?min)<\/td>/gm
+const RUSTLABS_ITEM_DURABILITY_QUANTITY_CELL_REGEX = /<td\sclass="no-padding"\sdata-value="[^"]*">([\s\S]*?)<\/td>/m
+/* FIX: all no-padding cells of a row (data-value + inner html), used to find the ammo type cell. */
+const RUSTLABS_ITEM_DURABILITY_CELLS_REGEX = /<td\sclass="no-padding"\sdata-value="([^"]*)">([\s\S]*?)<\/td>/gm
+/* FIX: the ammo icon has no trailing "<" inside the cell (the cell html ends with the quantity text),
+   so the old regex (ending with "<") could never match. */
+const RUSTLABS_ITEM_DURABILITY_QUANTITY_AMMO_REGEX =
+    /<img\s[^>]*\/img\/[^>]*\/([^"']+?)\.png"?\salt="([^"]*)"[^>]*class="icon-in-text"[^>]*>([^<]*)/m
+/* FIX: time cells now look like "5 hours ", "4 hours 10 min " or "2 min 27 sec" (hours were not matched before). */
+const RUSTLABS_ITEM_DURABILITY_TIME_REGEX = /<td\sdata-value="(.*?)">([^<]*?(?:sec|min|hours?)\s*)<\/td>/gm
 const RUSTLABS_ITEM_DURABILITY_FUEL_AMOUNT_REGEX = /alt="Fuel\sAmount">(.*?)<\/td>/gm
 const RUSTLABS_ITEM_DURABILITY_SULFUR_AMOUNT_REGEX = /alt="Sulfur\sAmount">(.*?)<\/td>/gm
 
@@ -124,7 +151,22 @@ const RUSTLABS_ITEM_SMELTING_REGEX1 =
     /<a\shref="\/item\/(\n|.)*?img\/.*?\/(.*?)\.png"\salt="(.*?)"(\n|.)*?<\/a><a\shref="\/item\/(\n|.)*?img\/.*?\/wood\.png"(\n|.)*?text-in-icon">(.*?)<\/span(\n|.)*?<a\shref="\/item\/(\n|.)*?img\/.*?\/(.*?)\.png"\salt="(.*?)"(\n|.)*?text-in-icon">(.*?)<(\n|.)*?<td>(.*?sec|.*?min)</gm
 const RUSTLABS_ITEM_SMELTING_REGEX2 = /<a\shref="\/item\/(\n|.)*?img\/.*?\/(.*?)\.png"\salt="(.*?)"(\n|.)*?<a\shref="\/item\/(\n|.)*?img\/.*?\/(.*?)\.png"\salt="(.*?)"(\n|.)*?text-in-icon">(.*?)<\/span(\n|.)*?<td>(.*?sec|.*?min)</gm
 
-const RUSTLABS_ITEM_DESPAWN_REGEX = /<td>Despawn\stime<\/td>(\n|.)*?<td>(.*?)<\/td>/gm
+/* FIX: the smelting table header is now "<th colspan="2">Furnace</th><th>Process</th>", which broke
+   RUSTLABS_ITEM_SMELTING_AREA_REGEX1 (it required "<th>Process" right after "<thead><tr>"), and the row
+   markup changed as well (wood shown as "×0.33", quantity inside the item box). These parse any layout. */
+const RUSTLABS_ITEM_SMELTING_AREA_REGEX4 = /data-name="smelting"\sclass="tab-page[\s\S]*?<table\sclass[\s\S]*?<\/table>/m
+const RUSTLABS_ITEM_SMELTING_ROW_REGEX4 = /<tr>([\s\S]*?)<\/tr>/g
+const RUSTLABS_ITEM_SMELTING_ITEM_REGEX4 = /<img[^>]*\/img\/(?:items\d+\/)?([^"']+?)\.png"[^>]*\salt="([^"]*)"/m
+const RUSTLABS_ITEM_SMELTING_WOOD_REGEX4 =
+    /<a\shref="\/item\/wood"\sclass="item-box">[\s\S]*?text-in-icon">([^<]*)<\/span>/m
+const RUSTLABS_ITEM_SMELTING_QUANTITY_REGEX4 = /text-in-icon">([^<]*)<\/span>/
+/* Time cell comes as "<td data-value="0.67">0.67 sec</td>" (resource pages) or plain "<td>3.33 sec</td>" (appliance pages). */
+const RUSTLABS_ITEM_SMELTING_TIME_REGEX4 =
+    /<td(?:\sdata-value="([^"]*)")?[^>]*>\s*([^<]*(?:sec|min|hour)[^<]*)<\/td>/m
+const RUSTLABS_ITEM_SMELTING_ARROW = 'rarrow.png'
+
+/* FIX: the page says "Despawn" (older pages said "Despawn time"). */
+const RUSTLABS_ITEM_DESPAWN_REGEX = /<td>Despawn(?:\stime)?<\/td>(\n|.)*?<td>(.*?)<\/td>/gm
 
 const RUSTLABS_ITEM_STACK_REGEX = /<td>Stack\sSize<\/td>(\n|.)*?<td>(.*?)<\/td>/gm
 
@@ -136,6 +178,16 @@ const RUSTLABS_ITEM_DECAY_REGEX3 =
     /<td>Decay\stime\soutside<\/td>(\n|.){1,3}?<td>(.*?)<\/td>(\n|.)*?<td>Decay\stime\sunderwater<\/td>(\n|.){1,3}?<td>(.*?)<\/td>(\n|.)*?<td>HP<\/td>(\n|.){1,3}?<td>(.*?)<\/td>/gm
 const RUSTLABS_ITEM_DECAY_REGEX4 =
     /<td>Decay\stime\soutside<\/td>(\n|.){1,3}?<td>(.*?)<\/td>(\n|.)*?<td>HP<\/td>(\n|.){1,3}?<td>(.*?)<\/td>/gm
+
+/* FIX: entity pages (vehicles, horses, ...) show only "Decay time outside/inside" and have NO HP row,
+   so all four layouts above fail. Read those info-table cells one by one instead. */
+const RUSTLABS_ITEM_DECAY_VALUE_REGEX = {
+    decay: /<td>\s*Decay\s*<\/td>[\s\S]{1,200}?<td>([\s\S]*?)<\/td>/m,
+    outside: /<td>\s*Decay\s+time\s+outside\s*<\/td>[\s\S]{1,200}?<td>([\s\S]*?)<\/td>/m,
+    inside: /<td>\s*Decay\s+time\s+inside\s*<\/td>[\s\S]{1,200}?<td>([\s\S]*?)<\/td>/m,
+    underwater: /<td>\s*Decay\s+time\s+underwater\s*<\/td>[\s\S]{1,200}?<td>([\s\S]*?)<\/td>/m,
+    hp: /<td>\s*HP\s*<\/td>[\s\S]{1,200}?<td>([\s\S]*?)<\/td>/m
+};
 
 const RUSTLABS_ITEM_UPKEEP_AREA_REGEX = /<td>Upkeep<\/td>(\n|.)*?<\/tr>/gm
 const RUSTLABS_ITEM_UPKEEP_REGEX =
@@ -617,6 +669,7 @@ async function preflightCheck() {
 
 async function processAllItems() {
     const rustlabsItemNames = [];
+    const processedItems = loadProgress();
     const response = await scrape(RUSTLABS_ALL_ITEMS_URL);
 
     if (response.status !== 200) exit(RUSTLABS_ALL_ITEMS_URL);
@@ -641,6 +694,18 @@ async function processAllItems() {
         const shortname = item[1];
         const name = item[2];
 
+        /* DEBUG mode: only process the requested item. */
+        if (DEBUG_ITEM !== '' && rustlabsName !== DEBUG_ITEM) {
+            counter += 1;
+            continue;
+        }
+
+        /* Resume mode: skip items that were already processed in an earlier run. */
+        if (DEBUG_ITEM === '' && processedItems.has(rustlabsName)) {
+            counter += 1;
+            continue;
+        }
+
         console.log(`Item ${name} (${counter}/${rustlabsNumberOfItems})`);
         counter += 1;
 
@@ -660,7 +725,43 @@ async function processAllItems() {
         processItemDecay(rustlabsName, shortname, name, data);
         processItemUpkeep(rustlabsName, shortname, name, data);
 
+        /* DEBUG mode: save HTML, print parsed result and quit. */
+        if (DEBUG_ITEM !== '') {
+            Fs.mkdirSync(OUTPUT_DIRECTORY, { recursive: true });
+            Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, `debug_${rustlabsName}.html`), data);
+            console.log(`Saved debug HTML to ${Path.join(OUTPUT_DIRECTORY, `debug_${rustlabsName}.html`)}`);
+            console.log(JSON.stringify({
+                craft: rustlabsCraftData,
+                research: rustlabsResearchData,
+                recycle: rustlabsRecycleData,
+                durability: rustlabsDurabilityData.items,
+                smelting: rustlabsSmeltingData,
+                despawn: rustlabsDespawnData,
+                stack: rustlabsStackData,
+                decay: rustlabsDecayData.items,
+                upkeep: rustlabsUpkeepData.items
+            }, null, 2));
+            await closeBrowser();
+            process.exit(0);
+        }
+
+        processedItems.add(rustlabsName);
+        if (processedItems.size % getSaveEveryItems() === 0) {
+            writeOutputFiles();
+            saveProgress(processedItems);
+        }
+
         await sleep(SLEEP_TIMEOUT_MS);
+    }
+
+    if (DEBUG_ITEM === '') {
+        saveProgress(processedItems);
+    }
+
+    if (DEBUG_ITEM !== '') {
+        console.error(`Debug item "${DEBUG_ITEM}" was not found in the item list.`);
+        await closeBrowser();
+        process.exit(1);
     }
 }
 
@@ -1137,22 +1238,32 @@ function processItemRecycle(rustlabsName, shortname, name, data) {
 
     const rows = data.matchAll(RUSTLABS_ITEM_RECYCLE_ROW_REGEX);
     for (const row of rows) {
-        if (row.length !== 2) exit();
+        if (row.length !== 2) continue;
         const rowData = row[0];
 
         let recyclerType = null;
         const recyclerMatches = rowData.matchAll(RUSTLABS_ITEM_RECYCLE_ITEM_REGEX);
         for (const match of recyclerMatches) {
-            if (match.length !== 2) exit();
+            if (match.length !== 2) continue;
             recyclerType = match[1];
             break;
         }
-        if (recyclerType === null) exit();
+        if (recyclerType === null) {
+            console.log('  - Recycle row without recycler type, skipping.');
+            continue;
+        }
+
+        /* FIX: rustclash has more recycler types than the 3 hardcoded ones (e.g. charged-green-recycler,
+           red-power-plant-recycler), so create entries dynamically. */
+        recyclerType = RECYCLER_ALIASES[recyclerType.toLowerCase()] || recyclerType;
+        if (recycleData[recyclerType] === undefined) {
+            recycleData[recyclerType] = { efficiency: null, yield: [] };
+        }
 
         let efficiency = null;
         const efficiencyMatches = rowData.matchAll(RUSTLABS_ITEM_RECYCLE_ITEM_EFFICIENCY_REGEX);
         for (const match of efficiencyMatches) {
-            if (match.length !== 2) exit();
+            if (match.length !== 2) continue;
             efficiency = match[1];
             break;
         }
@@ -1160,13 +1271,16 @@ function processItemRecycle(rustlabsName, shortname, name, data) {
 
         const matches = rowData.matchAll(RUSTLABS_ITEM_RECYCLE_OUTPUT_ITEMS_REGEX);
         for (const match of matches) {
-            if (match.length !== 4) exit();
+            if (match.length !== 4) continue;
 
             const shortnameSub = match[1];
             const nameSub = Utils.decodeHtml(match[2]);
             let quantity = match[3];
             const id = Object.keys(ITEMS).find(e => ITEMS[e].shortname === shortnameSub && ITEMS[e].name === nameSub);
-            if (id === undefined) exit();
+            if (id === undefined) {
+                console.log(`  - Unknown recycle output item (${shortnameSub} / ${nameSub}), skipping.`);
+                continue;
+            }
 
             let probability = 1;
             if (quantity === '') {
@@ -1176,7 +1290,8 @@ function processItemRecycle(rustlabsName, shortname, name, data) {
                 quantity = quantity.replace(/,/g, '').replace(/[^0-9.%-]/g, '');
 
                 if (quantity.includes('%')) {
-                    probability = `0.${quantity.replace('%', '')}`;
+                    /* FIX: 5% -> 0.05, 12.5% -> 0.125 (old code produced 0.5 and 0.12). */
+                    probability = parseFloat(quantity.replace('%', '')) / 100;
                     quantity = 1;
                 }
             }
@@ -1374,6 +1489,27 @@ function processItemDurability(rustlabsName, shortname, name, data, type = 'item
         }
         if (rowInvalid) continue;
 
+        /* FIX: for guns/turrets the quantity now comes from data-value, so the ammo type has to be read
+           separately. Scan every "no-padding" cell of the row, skip the placeholder cells ("-", 2147483647)
+           and take the first cell that contains an item icon, so Fuel/Sulfur are never mistaken for ammo. */
+        if ((group === 'guns' || group === 'turret') && quantityTypeShortname === null) {
+            for (const cellMatch of dataMatch.matchAll(RUSTLABS_ITEM_DURABILITY_CELLS_REGEX)) {
+                const cellDataValue = normalizeQuantityString(cellMatch[1]);
+                if (cellDataValue === '' || cellDataValue === '-' || cellDataValue === '2147483647') {
+                    continue;
+                }
+
+                const ammoMatch = cellMatch[2].match(RUSTLABS_ITEM_DURABILITY_QUANTITY_AMMO_REGEX);
+                if (ammoMatch === null) {
+                    continue;
+                }
+
+                quantityTypeShortname = ammoMatch[1];
+                quantityTypeName = Utils.decodeHtml(ammoMatch[2]);
+                break;
+            }
+        }
+
         if (quantity === null) {
             invalidateRow('quantity not found');
         }
@@ -1390,10 +1526,10 @@ function processItemDurability(rustlabsName, shortname, name, data, type = 'item
             quantityTypeId = Object.keys(ITEMS).find(e =>
                 ITEMS[e].shortname === quantityTypeShortname && ITEMS[e].name === quantityTypeName);
             if (!quantityTypeId) {
-                invalidateRow(`unknown quantity type (${quantityTypeShortname} / ${quantityTypeName})`);
+                /* Not fatal anymore: keep the row, just without the ammo type. */
+                quantityTypeId = null;
             }
         }
-        if (rowInvalid) continue;
 
         /* Time */
         let timeString = null;
@@ -1406,7 +1542,7 @@ function processItemDurability(rustlabsName, shortname, name, data, type = 'item
                     break;
                 }
                 time = parseFloat(timeMatch[1]);
-                timeString = timeMatch[2];
+                timeString = timeMatch[2].trim();
                 break;
             }
         }
@@ -1472,99 +1608,105 @@ function processItemSmelting(rustlabsName, shortname, name, data) {
     const itemId = Object.keys(ITEMS).find(e => ITEMS[e].shortname === shortname && ITEMS[e].name === name);
     if (!itemId) return;
 
-    data = data.match(RUSTLABS_ITEM_SMELTING_AREA_REGEX1);
-    if (data === null || data.length !== 1) {
+    const areaMatch = data.match(RUSTLABS_ITEM_SMELTING_AREA_REGEX4);
+    if (areaMatch === null) {
         console.log('  - No smelting data found.');
         return;
     }
-    data = data[0];
-
-    data = data.match(RUSTLABS_ITEM_SMELTING_AREA_REGEX2);
-    if (data === null || data.length !== 1) {
-        console.log('  - No smelting data found.');
-        return;
-    }
-    data = data[0];
 
     const content = [];
+    const rowMatches = [...areaMatch[0].matchAll(RUSTLABS_ITEM_SMELTING_ROW_REGEX4)];
+    for (const rowMatch of rowMatches) {
+        const rowData = rowMatch[1];
 
-    const smeltingMatches = [...data.matchAll(RUSTLABS_ITEM_SMELTING_AREA_REGEX3)];
-    for (const smeltingMatch of smeltingMatches) {
-        const area = smeltingMatch[0];
+        /* Process cell = the cell that contains the arrow between input and output. */
+        const arrowIndex = rowData.indexOf(RUSTLABS_ITEM_SMELTING_ARROW);
+        if (arrowIndex === -1) continue;
 
-        let fromShortname = null;
-        let fromName = null;
-        let woodQuantity = null;
-        let toShortname = null;
-        let toName = null;
-        let toQuantity = null;
-        let toProbability = null;
-        let time = null;
-        let timeString = null;
+        const cellStart = rowData.lastIndexOf('<td', arrowIndex);
+        const cellEnd = rowData.indexOf('</td>', arrowIndex);
+        if (cellStart === -1 || cellEnd === -1 || cellEnd <= cellStart) {
+            console.log('  - Unexpected smelting row format, skipping.');
+            continue;
+        }
 
-        let matches = [...area.matchAll(RUSTLABS_ITEM_SMELTING_REGEX1)];
-        if (matches.length === 0) {
-            /* Try the second regex */
-            matches = [...area.matchAll(RUSTLABS_ITEM_SMELTING_REGEX2)];
-            if (matches.length === 1) {
-                matches = matches[0];
-                if (matches.length !== 12) exit();
+        const processCell = rowData.slice(cellStart, cellEnd);
+        const arrowInCell = processCell.indexOf(RUSTLABS_ITEM_SMELTING_ARROW);
+        const left = processCell.slice(0, arrowInCell);
+        const right = processCell.slice(arrowInCell);
 
-                fromShortname = matches[2];
-                fromName = Utils.decodeHtml(matches[3]);
-                woodQuantity = (fromShortname === 'wood' && fromName === 'Wood') ? 1 : 0;
-                toShortname = matches[6];
-                toName = Utils.decodeHtml(matches[7]);
+        const fromItem = left.match(RUSTLABS_ITEM_SMELTING_ITEM_REGEX4);
+        const toItem = right.match(RUSTLABS_ITEM_SMELTING_ITEM_REGEX4);
+        if (fromItem === null || toItem === null) {
+            console.log('  - Smelting row without input/output item, skipping.');
+            continue;
+        }
 
-                toQuantity = matches[9];
-                toProbability = 1;
-                if (toQuantity === '') {
-                    toQuantity = 1;
+        const fromShortname = fromItem[1];
+        const fromName = Utils.decodeHtml(fromItem[2]);
+        const toShortname = toItem[1];
+        const toName = Utils.decodeHtml(toItem[2]);
+
+        const fromId = findItemIdByShortnameAndName(fromShortname, fromName);
+        if (fromId === undefined) {
+            console.log(`  - Unknown smelting input item (${fromShortname} / ${fromName}), skipping.`);
+            continue;
+        }
+        const toId = findItemIdByShortnameAndName(toShortname, toName);
+        if (toId === undefined) {
+            console.log(`  - Unknown smelting output item (${toShortname} / ${toName}), skipping.`);
+            continue;
+        }
+
+        /* Fuel (wood). Old pages always showed it, new ones omit it for e.g. the Electric Furnace. */
+        let woodQuantity = 0;
+        const woodMatch = left.match(RUSTLABS_ITEM_SMELTING_WOOD_REGEX4);
+        if (woodMatch !== null) {
+            const parsedWood = parseFloat(woodMatch[1].replace(/,/g, '').replace(/[^0-9.-]/g, ''));
+            if (!Number.isNaN(parsedWood)) {
+                woodQuantity = parsedWood;
+            }
+        }
+        if (woodQuantity === 0 && fromShortname === 'wood') {
+            /* Wood burning into charcoal uses the input itself as fuel. */
+            woodQuantity = 1;
+        }
+
+        /* Output quantity ("×2") or chance ("5%"); empty means 1 item with 100% chance. */
+        let toQuantity = 1;
+        let toProbability = 1;
+        const quantityMatch = right.match(RUSTLABS_ITEM_SMELTING_QUANTITY_REGEX4);
+        if (quantityMatch !== null) {
+            const rawQuantity = quantityMatch[1].trim();
+            if (rawQuantity !== '') {
+                const cleaned = rawQuantity.replace(/,/g, '').replace(/[^0-9.%-]/g, '');
+                if (cleaned.includes('%')) {
+                    const parsedProbability = parseFloat(cleaned.replace('%', '')) / 100;
+                    if (!Number.isNaN(parsedProbability)) {
+                        toProbability = parsedProbability;
+                    }
                 }
                 else {
-                    toQuantity = toQuantity.replace(/,/g, '').replace(/[^0-9.-]/g, '');
-
-                    if (toQuantity.includes('%')) {
-                        toProbability = parseFloat(`0.${toQuantity.replace('%', '')}`);
-                        toQuantity = 1;
-                    }
-                    else {
-                        toQuantity = parseFloat(toQuantity);
+                    const parsedQuantity = parseFloat(cleaned);
+                    if (!Number.isNaN(parsedQuantity)) {
+                        toQuantity = parsedQuantity;
                     }
                 }
-
-                time = parseTime(matches[11]);
-                timeString = matches[11];
-            }
-            else {
-                console.log('  - No smelting data found.');
-                return;
             }
         }
-        else if (matches.length === 1) {
-            matches = matches[0];
-            if (matches.length !== 16) exit();
 
-            fromShortname = matches[2];
-            fromName = Utils.decodeHtml(matches[3]);
-            woodQuantity = parseFloat(matches[7].replace(/,/g, '').replace(/[^0-9.-]/g, ''));
-            toShortname = matches[10];
-            toName = Utils.decodeHtml(matches[11]);
-            toQuantity = matches[13] === '' ? 1 : parseFloat(matches[13].replace(/,/g, '').replace(/[^0-9.-]/g, ''));
-            toProbability = 1;
-            time = parseTime(matches[15]);
-            timeString = matches[15];
+        let time = null;
+        let timeString = null;
+        const timeMatch = rowData.match(RUSTLABS_ITEM_SMELTING_TIME_REGEX4);
+        if (timeMatch !== null) {
+            timeString = timeMatch[2].trim();
+
+            const parsedTime = timeMatch[1] !== undefined && timeMatch[1] !== '' ?
+                parseFloat(timeMatch[1]) : parseTime(timeString);
+            if (!Number.isNaN(parsedTime)) {
+                time = parsedTime;
+            }
         }
-        else {
-            console.log('  - No smelting data found.');
-            return;
-        }
-
-        const fromId = Object.keys(ITEMS).find(e => ITEMS[e].shortname === fromShortname && ITEMS[e].name === fromName);
-        if (!fromId) exit();
-        const toId = Object.keys(ITEMS).find(e => ITEMS[e].shortname === toShortname && ITEMS[e].name === toName);
-        if (!toId) exit();
-
 
         content.push({
             fromId: fromId,
@@ -1575,6 +1717,11 @@ function processItemSmelting(rustlabsName, shortname, name, data) {
             time: time,
             timeString: timeString
         });
+    }
+
+    if (content.length === 0) {
+        console.log('  - No smelting data found.');
+        return;
     }
 
     rustlabsSmeltingData[itemId] = content;
@@ -1655,8 +1802,39 @@ function processItemDecay(rustlabsName, shortname, name, data, type = 'items') {
             if (matches.length !== 1) {
                 matches = [...data.matchAll(RUSTLABS_ITEM_DECAY_REGEX4)];
                 if (matches.length !== 1) {
-                    console.log('  - No decay data found.');
-                    return;
+                    /* FIX: fallback for pages without an HP row (e.g. vehicles: "Decay time outside/inside"). */
+                    const fallbackDecay = data.match(RUSTLABS_ITEM_DECAY_VALUE_REGEX.decay);
+                    const fallbackOutside = data.match(RUSTLABS_ITEM_DECAY_VALUE_REGEX.outside);
+                    const fallbackInside = data.match(RUSTLABS_ITEM_DECAY_VALUE_REGEX.inside);
+                    const fallbackUnderwater = data.match(RUSTLABS_ITEM_DECAY_VALUE_REGEX.underwater);
+                    const fallbackHp = data.match(RUSTLABS_ITEM_DECAY_VALUE_REGEX.hp);
+
+                    if (fallbackDecay === null && fallbackOutside === null && fallbackInside === null &&
+                        fallbackUnderwater === null) {
+                        console.log('  - No decay data found.');
+                        return;
+                    }
+
+                    if (fallbackDecay !== null) {
+                        decayString = fallbackDecay[1].trim();
+                        decay = parseTime(decayString);
+                    }
+                    if (fallbackOutside !== null) {
+                        decayOutsideString = fallbackOutside[1].trim();
+                        decayOutside = parseTime(decayOutsideString);
+                    }
+                    if (fallbackInside !== null) {
+                        decayInsideString = fallbackInside[1].trim();
+                        decayInside = parseTime(decayInsideString);
+                    }
+                    if (fallbackUnderwater !== null) {
+                        decayUnderwaterString = fallbackUnderwater[1].trim();
+                        decayUnderwater = parseTime(decayUnderwaterString);
+                    }
+                    if (fallbackHp !== null) {
+                        hpString = fallbackHp[1].trim();
+                        hp = hpString !== '' ? parseInt(hpString) : null;
+                    }
                 }
                 else {
                     /* Decay time outside, HP */
@@ -1786,44 +1964,122 @@ function processItemUpkeep(rustlabsName, shortname, name, data, type = 'items') 
     rustlabsUpkeepData[type][itemId] = content;
 }
 
+function getSaveEveryItems() {
+    return (Number.isNaN(SAVE_EVERY_ITEMS) || SAVE_EVERY_ITEMS <= 0) ? 100 : SAVE_EVERY_ITEMS;
+}
+
+function writeOutputFiles() {
+    Fs.mkdirSync(OUTPUT_DIRECTORY, { recursive: true });
+
+    /* Populate the json files */
+    Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsBuildingBlocks.json'),
+        JSON.stringify(rustlabsBuildingBlocks, null, 2));
+    Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsOther.json'),
+        JSON.stringify(rustlabsOther, null, 2));
+
+    Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsCraftData.json'),
+        JSON.stringify(rustlabsCraftData, null, 2));
+    Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsResearchData.json'),
+        JSON.stringify(rustlabsResearchData, null, 2));
+    Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsRecycleData.json'),
+        JSON.stringify(rustlabsRecycleData, null, 2));
+    Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsDurabilityData.json'),
+        JSON.stringify(rustlabsDurabilityData, null, 2));
+    Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsSmeltingData.json'),
+        JSON.stringify(rustlabsSmeltingData, null, 2));
+    Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsDespawnData.json'),
+        JSON.stringify(rustlabsDespawnData, null, 2));
+    Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsStackData.json'),
+        JSON.stringify(rustlabsStackData, null, 2));
+    Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsDecayData.json'),
+        JSON.stringify(rustlabsDecayData, null, 2));
+    Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsUpkeepData.json'),
+        JSON.stringify(rustlabsUpkeepData, null, 2));
+
+    console.log(`Rustlabs data written to: ${OUTPUT_DIRECTORY}`);
+}
+
+function saveProgress(processedItems) {
+    Fs.mkdirSync(OUTPUT_DIRECTORY, { recursive: true });
+    Fs.writeFileSync(PROGRESS_FILE, JSON.stringify([...processedItems], null, 2));
+}
+
+function loadProgress() {
+    if (!RESUME) {
+        return new Set();
+    }
+
+    if (!Fs.existsSync(PROGRESS_FILE)) {
+        console.log('Resume enabled, but no progress file found. Starting from scratch.');
+        return new Set();
+    }
+
+    try {
+        const parsed = JSON.parse(Fs.readFileSync(PROGRESS_FILE, 'utf8'));
+        if (!Array.isArray(parsed)) return new Set();
+
+        console.log(`Resume enabled: skipping ${parsed.length} already processed items.`);
+        return new Set(parsed);
+    }
+    catch (error) {
+        console.log(`  - Could not read progress file: ${error.message}`);
+        return new Set();
+    }
+}
+
+function mergeLoadedData(fileName, target) {
+    const filePath = Path.join(OUTPUT_DIRECTORY, fileName);
+    if (!Fs.existsSync(filePath)) return;
+
+    try {
+        const loaded = JSON.parse(Fs.readFileSync(filePath, 'utf8'));
+        if (loaded === null || typeof loaded !== 'object') return;
+
+        for (const key of Object.keys(loaded)) {
+            target[key] = loaded[key];
+        }
+    }
+    catch (error) {
+        console.log(`  - Could not load ${fileName}: ${error.message}`);
+    }
+}
+
+function loadPreviousOutput() {
+    if (!RESUME) return;
+
+    mergeLoadedData('rustlabsBuildingBlocks.json', rustlabsBuildingBlocks);
+    mergeLoadedData('rustlabsOther.json', rustlabsOther);
+    mergeLoadedData('rustlabsCraftData.json', rustlabsCraftData);
+    mergeLoadedData('rustlabsResearchData.json', rustlabsResearchData);
+    mergeLoadedData('rustlabsRecycleData.json', rustlabsRecycleData);
+    mergeLoadedData('rustlabsDurabilityData.json', rustlabsDurabilityData);
+    mergeLoadedData('rustlabsSmeltingData.json', rustlabsSmeltingData);
+    mergeLoadedData('rustlabsDespawnData.json', rustlabsDespawnData);
+    mergeLoadedData('rustlabsStackData.json', rustlabsStackData);
+    mergeLoadedData('rustlabsDecayData.json', rustlabsDecayData);
+    mergeLoadedData('rustlabsUpkeepData.json', rustlabsUpkeepData);
+}
+
 async function main() {
     let caughtError = null;
 
     try {
+        loadPreviousOutput();
         await preflightCheck();
         await processAll();
 
-        Fs.mkdirSync(OUTPUT_DIRECTORY, { recursive: true });
-
-        /* Populate the json files */
-        Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsBuildingBlocks.json'),
-            JSON.stringify(rustlabsBuildingBlocks, null, 2));
-        Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsOther.json'),
-            JSON.stringify(rustlabsOther, null, 2));
-
-        Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsCraftData.json'),
-            JSON.stringify(rustlabsCraftData, null, 2));
-        Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsResearchData.json'),
-            JSON.stringify(rustlabsResearchData, null, 2));
-        Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsRecycleData.json'),
-            JSON.stringify(rustlabsRecycleData, null, 2));
-        Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsDurabilityData.json'),
-            JSON.stringify(rustlabsDurabilityData, null, 2));
-        Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsSmeltingData.json'),
-            JSON.stringify(rustlabsSmeltingData, null, 2));
-        Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsDespawnData.json'),
-            JSON.stringify(rustlabsDespawnData, null, 2));
-        Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsStackData.json'),
-            JSON.stringify(rustlabsStackData, null, 2));
-        Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsDecayData.json'),
-            JSON.stringify(rustlabsDecayData, null, 2));
-        Fs.writeFileSync(Path.join(OUTPUT_DIRECTORY, 'rustlabsUpkeepData.json'),
-            JSON.stringify(rustlabsUpkeepData, null, 2));
-
-        console.log(`Rustlabs data written to: ${OUTPUT_DIRECTORY}`);
+        writeOutputFiles();
     }
     catch (error) {
         caughtError = error;
+
+        /* Keep whatever was scraped before the failure. */
+        try {
+            writeOutputFiles();
+        }
+        catch (writeError) {
+            console.error(`  - Could not write partial results: ${writeError.message}`);
+        }
     }
     finally {
         await closeBrowser();
@@ -1835,7 +2091,3 @@ async function main() {
 }
 
 main();
-
-
-
-

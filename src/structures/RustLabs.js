@@ -414,6 +414,8 @@ class RustLabs {
         recycleData['recycler'] = [];
         recycleData['shredder'] = [];
         recycleData['safe-zone-recycler'] = [];
+        recycleData['red-power-plant-recycler'] = [];
+        recycleData['charged-green-recycler'] = [];
 
         for (const recyclerType in recycleData) {
             let recycledItems = items.slice();
@@ -428,10 +430,12 @@ class RustLabs {
                     }
 
                     /* Can the item be recycled further? */
-                    if (this.recycleData[item.itemId][recyclerType]['yield'].length > 0 && !item.itemIsBlueprint &&
+                    /* Older data files may not contain every recycler type, treat a missing type as "no yield". */
+                    const typeData = this.recycleData[item.itemId][recyclerType];
+                    if (typeData && typeData['yield'].length > 0 && !item.itemIsBlueprint &&
                         !IGNORED_RECYCLE_ITEMS.includes(item.itemId)) {
                         noMoreIterations = false;
-                        for (const recycleItem of this.recycleData[item.itemId][recyclerType]['yield']) {
+                        for (const recycleItem of typeData['yield']) {
                             for (let i = 0; i < item.quantity; i++) {
                                 if (recycleItem.probability < 1 && Math.random() * 1 > recycleItem.probability) continue;
 

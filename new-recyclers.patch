@@ -1,0 +1,100 @@
+diff --git a/src/commands/recycle.js b/src/commands/recycle.js
+index bfe49cb..4759f5f 100644
+--- a/src/commands/recycle.js
++++ b/src/commands/recycle.js
+@@ -49,7 +49,9 @@ module.exports = {
+ 				.addChoices(
+ 					{ name: client.intlGet(guildId, 'recycler'), value: 'recycler' },
+ 					{ name: client.intlGet(guildId, 'shredder'), value: 'shredder' },
+-					{ name: client.intlGet(guildId, 'safe-zone-recycler'), value: 'safe-zone-recycler' }));
++					{ name: client.intlGet(guildId, 'safe-zone-recycler'), value: 'safe-zone-recycler' },
++					{ name: client.intlGet(guildId, 'red-power-plant-recycler'), value: 'red-power-plant-recycler' },
++					{ name: client.intlGet(guildId, 'charged-green-recycler'), value: 'charged-green-recycler' }));
+ 	},
+ 
+ 	async execute(client, interaction) {
+diff --git a/src/discordTools/discordEmbeds.js b/src/discordTools/discordEmbeds.js
+index a8f2685..ae8f4d8 100644
+--- a/src/discordTools/discordEmbeds.js
++++ b/src/discordTools/discordEmbeds.js
+@@ -1162,7 +1162,7 @@ module.exports = {
+         ]);
+ 
+         let items0 = '', quantities0 = '';
+-        for (const item of recycleDetails[2][recyclerType]['yield']) {
++        for (const item of (recycleDetails[2][recyclerType]?.['yield'] ?? [])) {
+             items0 += `${Client.client.items.getName(item.id)}\n`;
+             quantities0 += (item.probability !== 1) ? `${parseInt(item.probability * 100)}%\n` : `${item.quantity}\n`;
+         }
+diff --git a/src/languages/en.json b/src/languages/en.json
+index cf9bd2f..4528098 100644
+--- a/src/languages/en.json
++++ b/src/languages/en.json
+@@ -231,7 +231,7 @@
+     "commandsPlayersStatusDesc": "Search for players that are online/offline/any.",
+     "commandsRecycleDesc": "Display the output of recycling an item.",
+     "commandsRecycleQuantityDesc": "The quantity of items to recycle.",
+-    "commandsRecycleRecyclerTypeDesc": "The recycler type (recycler, shredder, safe-zone-recycler).",
++    "commandsRecycleRecyclerTypeDesc": "The recycler type (recycler, shredder, safe-zone-recycler, red-power-plant-recycler, charged-green-recycler).",
+     "commandsResearchDesc": "Display the cost to research an item.",
+     "commandsResetAlarmsDesc": "Reset alarms channel.",
+     "commandsResetDesc": "Reset Discord channels.",
+@@ -633,6 +633,8 @@
+     "rustMonument": "Rust Monument",
+     "rustplusOperational": "RUSTPLUS OPERATIONAL.",
+     "safe-zone-recycler": "Safe Zone Recycler",
++    "red-power-plant-recycler": "Red Power Plant Recycler",
++    "charged-green-recycler": "Charged Green Recycler",
+     "samsite": "SAM site",
+     "satelliteDish": "Satellite Dish",
+     "scrap": "Scrap",
+diff --git a/src/languages/pl.json b/src/languages/pl.json
+index 1702ec2..6f4f36c 100644
+--- a/src/languages/pl.json
++++ b/src/languages/pl.json
+@@ -168,7 +168,7 @@
+     "commandsPlayersStatusDesc": "Szukaj graczy online, offline lub dowolnych.",
+     "commandsRecycleDesc": "Wyświetl wynik recyklingu przedmiotu.",
+     "commandsRecycleQuantityDesc": "Liczba przedmiotów do recyklingu.",
+-    "commandsRecycleRecyclerTypeDesc": "Typ recyclera (recycler, shredder, safe-zone-recycler).",
++    "commandsRecycleRecyclerTypeDesc": "Typ recyclera (recycler, shredder, safe-zone-recycler, red-power-plant-recycler, charged-green-recycler).",
+     "commandsResearchDesc": "Wyświetl koszt badania przedmiotu.",
+     "commandsResetAlarmsDesc": "Zresetuj kanał alarmów.",
+     "commandsResetDesc": "Zresetuj kanały Discorda.",
+@@ -630,6 +630,8 @@
+     "rustMonument": "Monument Rust",
+     "rustplusOperational": "RUSTPLUS DZIAŁA.",
+     "safe-zone-recycler": "Recycler w bezpiecznej strefie",
++    "red-power-plant-recycler": "Czerwony recycler w elektrowni",
++    "charged-green-recycler": "Naładowany zielony recycler",
+     "samsite": "SAM site",
+     "satelliteDish": "Satellite Dish",
+     "scrap": "Scrap",
+diff --git a/src/structures/RustLabs.js b/src/structures/RustLabs.js
+index 03d8402..680af6d 100644
+--- a/src/structures/RustLabs.js
++++ b/src/structures/RustLabs.js
+@@ -414,6 +414,8 @@ class RustLabs {
+         recycleData['recycler'] = [];
+         recycleData['shredder'] = [];
+         recycleData['safe-zone-recycler'] = [];
++        recycleData['red-power-plant-recycler'] = [];
++        recycleData['charged-green-recycler'] = [];
+ 
+         for (const recyclerType in recycleData) {
+             let recycledItems = items.slice();
+@@ -428,10 +430,12 @@ class RustLabs {
+                     }
+ 
+                     /* Can the item be recycled further? */
+-                    if (this.recycleData[item.itemId][recyclerType]['yield'].length > 0 && !item.itemIsBlueprint &&
++                    /* Older data files may not contain every recycler type, treat a missing type as "no yield". */
++                    const typeData = this.recycleData[item.itemId][recyclerType];
++                    if (typeData && typeData['yield'].length > 0 && !item.itemIsBlueprint &&
+                         !IGNORED_RECYCLE_ITEMS.includes(item.itemId)) {
+                         noMoreIterations = false;
+-                        for (const recycleItem of this.recycleData[item.itemId][recyclerType]['yield']) {
++                        for (const recycleItem of typeData['yield']) {
+                             for (let i = 0; i < item.quantity; i++) {
+                                 if (recycleItem.probability < 1 && Math.random() * 1 > recycleItem.probability) continue;
+ 

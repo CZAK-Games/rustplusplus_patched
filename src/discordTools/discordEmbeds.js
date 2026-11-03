@@ -1176,7 +1176,7 @@ module.exports = {
         ]);
 
         let items0 = '', quantities0 = '';
-        for (const item of recycleDetails[2][recyclerType]['yield']) {
+        for (const item of (recycleDetails[2][recyclerType]?.['yield'] ?? [])) {
             items0 += `${Client.client.items.getName(item.id)}\n`;
             quantities0 += (item.probability !== 1) ? `${parseInt(item.probability * 100)}%\n` : `${item.quantity}\n`;
         }

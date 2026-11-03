@@ -49,7 +49,9 @@ module.exports = {
 				.addChoices(
 					{ name: client.intlGet(guildId, 'recycler'), value: 'recycler' },
 					{ name: client.intlGet(guildId, 'shredder'), value: 'shredder' },
-					{ name: client.intlGet(guildId, 'safe-zone-recycler'), value: 'safe-zone-recycler' }));
+					{ name: client.intlGet(guildId, 'safe-zone-recycler'), value: 'safe-zone-recycler' },
+					{ name: client.intlGet(guildId, 'red-power-plant-recycler'), value: 'red-power-plant-recycler' },
+					{ name: client.intlGet(guildId, 'charged-green-recycler'), value: 'charged-green-recycler' }));
 	},
 
 	async execute(client, interaction) {
