@@ -240,6 +240,10 @@ async function pairingServer(client, guild, title, message, body) {
         }
     }
 
+    if (connect === null && Config.steam.apiKey) {
+        connect = await require('./steamServerLookup.js').findConnectString(Config.steam.apiKey, title);
+    }
+
     instance.serverList[serverId] = {
         title: title,
         serverIp: body.ip ?? body.id,

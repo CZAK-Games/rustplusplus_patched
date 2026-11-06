@@ -31,6 +31,9 @@ module.exports = {
         token: process.env.RPP_DISCORD_TOKEN || '',
         needAdminPrivileges: process.env.RPP_NEED_ADMIN_PRIVILEGES || true, /* If true, only admins can delete (server, switch..), manage credentials and reset a channel */
     },
+    steam: {
+        apiKey: process.env.RPP_STEAM_API_KEY || '',
+    },
     battlemetrics: {
         token: process.env.RPP_BATTLEMETRICS_TOKEN || '',
         get enabled() {
