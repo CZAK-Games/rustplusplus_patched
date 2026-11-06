@@ -23,6 +23,7 @@ const Path = require('path');
 const PushReceiverClient = require('@liamcottle/push-receiver/src/client');
 
 const Battlemetrics = require('../structures/Battlemetrics');
+const CompanionSocket = require('./companionSocket.js');
 const Config = require('../../config');
 const Constants = require('../util/constants.js');
 const DiscordButtons = require('../discordTools/discordButtons.js');
@@ -219,7 +220,7 @@ function isValidUrl(url) {
 
 async function pairingServer(client, guild, title, message, body) {
     const instance = client.getInstance(guild.id);
-    const serverId = `${body.ip}-${body.port}`;
+    const serverId = CompanionSocket.getServerIdFromBody(body);
     const server = instance.serverList[serverId];
 
     let messageObj = undefined;
@@ -241,8 +242,8 @@ async function pairingServer(client, guild, title, message, body) {
 
     instance.serverList[serverId] = {
         title: title,
-        serverIp: body.ip,
-        appPort: body.port,
+        serverIp: body.ip ?? body.id,
+        appPort: body.port ?? 0,
         steamId: body.playerId,
         playerToken: body.playerToken,
         description: body.desc.replace(/\\n/g, '\n').replace(/\\t/g, '\t'),
@@ -270,8 +271,8 @@ async function pairingServer(client, guild, title, message, body) {
     if (!instance.serverListLite.hasOwnProperty(serverId)) instance.serverListLite[serverId] = new Object();
 
     instance.serverListLite[serverId][body.playerId] = {
-        serverIp: body.ip,
-        appPort: body.port,
+        serverIp: body.ip ?? body.id,
+        appPort: body.port ?? 0,
         steamId: body.playerId,
         playerToken: body.playerToken,
     };
@@ -282,7 +283,7 @@ async function pairingServer(client, guild, title, message, body) {
 
 async function pairingEntitySwitch(client, guild, title, message, body) {
     const instance = client.getInstance(guild.id);
-    const serverId = `${body.ip}-${body.port}`;
+    const serverId = CompanionSocket.getServerIdFromBody(body);
     if (!instance.serverList.hasOwnProperty(serverId)) return;
     const switches = instance.serverList[serverId].switches;
 
@@ -332,7 +333,7 @@ async function pairingEntitySwitch(client, guild, title, message, body) {
 
 async function pairingEntitySmartAlarm(client, guild, title, message, body) {
     const instance = client.getInstance(guild.id);
-    const serverId = `${body.ip}-${body.port}`;
+    const serverId = CompanionSocket.getServerIdFromBody(body);
     if (!instance.serverList.hasOwnProperty(serverId)) return;
     const alarms = instance.serverList[serverId].alarms;
 
@@ -380,7 +381,7 @@ async function pairingEntitySmartAlarm(client, guild, title, message, body) {
 
 async function pairingEntityStorageMonitor(client, guild, title, message, body) {
     const instance = client.getInstance(guild.id);
-    const serverId = `${body.ip}-${body.port}`;
+    const serverId = CompanionSocket.getServerIdFromBody(body);
     if (!instance.serverList.hasOwnProperty(serverId)) return;
     const storageMonitors = instance.serverList[serverId].storageMonitors;
 
@@ -459,7 +460,7 @@ async function alarmAlarm(client, guild, title, message, body) {
     setting fcmAlarmNotificationEnabled is enabled. Those notifications will be handled here. */
 
     const instance = client.getInstance(guild.id);
-    const serverId = `${body.ip}-${body.port}`;
+    const serverId = CompanionSocket.getServerIdFromBody(body);
     const entityId = body.entityId;
     const server = instance.serverList[serverId];
     const rustplus = client.rustplusInstances[guild.id];
@@ -477,7 +478,7 @@ async function alarmAlarm(client, guild, title, message, body) {
 
 async function alarmRaidAlarm(client, guild, title, message, body) {
     const instance = client.getInstance(guild.id);
-    const serverId = `${body.ip}-${body.port}`;
+    const serverId = CompanionSocket.getServerIdFromBody(body);
     const rustplus = client.rustplusInstances[guild.id];
 
     if (!instance.serverList.hasOwnProperty(serverId)) return;
@@ -526,7 +527,7 @@ async function teamLogin(client, guild, title, message, body) {
     }
 
     const rustplus = client.rustplusInstances[guild.id];
-    const serverId = `${body.ip}-${body.port}`;
+    const serverId = CompanionSocket.getServerIdFromBody(body);
 
     if (!rustplus || (rustplus && (serverId !== rustplus.serverId))) {
         await DiscordMessages.sendMessage(guild.id, content, null, instance.channelId.activity);

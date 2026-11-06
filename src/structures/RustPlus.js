@@ -24,6 +24,7 @@ const RustPlusLib = require('@liamcottle/rustplus.js');
 const Translate = require('translate');
 
 const Client = require('../../index.ts');
+const CompanionSocket = require('../util/companionSocket.js');
 const Constants = require('../util/constants.js');
 const Decay = require('../util/decay.js');
 const DiscordEmbeds = require('../discordTools/discordEmbeds');
@@ -111,6 +112,7 @@ const TOKENS_REPLENISH = 3;     /* Per second */
 class RustPlus extends RustPlusLib {
     constructor(guildId, serverIp, appPort, steamId, playerToken) {
         super(serverIp, appPort, steamId, playerToken);
+        CompanionSocket.applyCompanionConnect(this);
 
         this.serverId = `${this.server}-${this.port}`;
         this.guildId = guildId;

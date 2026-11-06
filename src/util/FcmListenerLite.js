@@ -20,6 +20,7 @@
 
 const PushReceiverClient = require('@liamcottle/push-receiver/src/client');
 
+const CompanionSocket = require('./companionSocket.js');
 const Constants = require('../util/constants.js');
 const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
@@ -161,13 +162,13 @@ function isValidUrl(url) {
 
 async function pairingServer(client, guild, steamId, title, message, body) {
     const instance = client.getInstance(guild.id);
-    const serverId = `${body.ip}-${body.port}`;
+    const serverId = CompanionSocket.getServerIdFromBody(body);
 
     if (!instance.serverListLite.hasOwnProperty(serverId)) instance.serverListLite[serverId] = new Object();
 
     instance.serverListLite[serverId][steamId] = {
-        serverIp: body.ip,
-        appPort: body.port,
+        serverIp: body.ip ?? body.id,
+        appPort: body.port ?? 0,
         steamId: body.playerId,
         playerToken: body.playerToken,
     };
@@ -181,7 +182,7 @@ async function pairingServer(client, guild, steamId, title, message, body) {
 
 async function pairingEntitySwitch(client, guild, title, message, body) {
     const instance = client.getInstance(guild.id);
-    const serverId = `${body.ip}-${body.port}`;
+    const serverId = CompanionSocket.getServerIdFromBody(body);
     if (!instance.serverList.hasOwnProperty(serverId)) return;
     const switches = instance.serverList[serverId].switches;
 
@@ -231,7 +232,7 @@ async function pairingEntitySwitch(client, guild, title, message, body) {
 
 async function pairingEntitySmartAlarm(client, guild, title, message, body) {
     const instance = client.getInstance(guild.id);
-    const serverId = `${body.ip}-${body.port}`;
+    const serverId = CompanionSocket.getServerIdFromBody(body);
     if (!instance.serverList.hasOwnProperty(serverId)) return;
     const alarms = instance.serverList[serverId].alarms;
 
@@ -279,7 +280,7 @@ async function pairingEntitySmartAlarm(client, guild, title, message, body) {
 
 async function pairingEntityStorageMonitor(client, guild, title, message, body) {
     const instance = client.getInstance(guild.id);
-    const serverId = `${body.ip}-${body.port}`;
+    const serverId = CompanionSocket.getServerIdFromBody(body);
     if (!instance.serverList.hasOwnProperty(serverId)) return;
     const storageMonitors = instance.serverList[serverId].storageMonitors;
 

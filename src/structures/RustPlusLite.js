@@ -21,11 +21,13 @@
 const RustPlusLib = require('@liamcottle/rustplus.js');
 
 const Client = require('../../index.ts');
+const CompanionSocket = require('../util/companionSocket.js');
 const Config = require('../../config');
 
 class RustPlusLite extends RustPlusLib {
     constructor(guildId, logger, rustplus, serverIp, appPort, steamId, playerToken) {
         super(serverIp, appPort, steamId, playerToken);
+        CompanionSocket.applyCompanionConnect(this);
 
         this.serverId = `${this.server}-${this.port}`;
         this.guildId = guildId;

@@ -73,6 +73,8 @@ module.exports = {
             await client.setupGuild(guild);
         }
 
+        require('../util/companionSocket.js').startExpiryReminder(client);
+
         if (Config.battlemetrics.enabled) {
             await client.updateBattlemetricsInstances();
             BattlemetricsHandler.handler(client, true);
