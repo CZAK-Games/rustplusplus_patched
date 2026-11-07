@@ -19,10 +19,16 @@ function isCompanionId(value) {
     return typeof value === 'string' && UUID_REGEX.test(value);
 }
 
-/* Server id used as key in serverList, from a pairing/notification body. */
+/*  Key used in serverList. Discord limits button ids to 100 characters and the bot packs the server id and
+    entity id into them, so a full UUID is too long: new-style servers get the first 12 hex characters of it. */
+function getServerId(server, port) {
+    if (isCompanionId(server)) return server.replace(/-/g, '').slice(0, 12);
+    return `${server}-${port}`;
+}
+
 function getServerIdFromBody(body) {
-    if (body.ip) return `${body.ip}-${body.port}`;
-    return `${body.id}-0`;
+    if (body.ip) return getServerId(body.ip, body.port);
+    return getServerId(body.id, 0);
 }
 
 function readTokens() {
@@ -180,4 +186,4 @@ function startExpiryReminder(client) {
     return setInterval(run, CHECK_INTERVAL_MS);
 }
 
-module.exports = { saveTokenFromText, startExpiryReminder, isCompanionId, getServerIdFromBody, getToken, setToken, tokenExpiry, applyCompanionConnect };
+module.exports = { getServerId, saveTokenFromText, startExpiryReminder, isCompanionId, getServerIdFromBody, getToken, setToken, tokenExpiry, applyCompanionConnect };

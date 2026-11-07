@@ -114,7 +114,7 @@ class RustPlus extends RustPlusLib {
         super(serverIp, appPort, steamId, playerToken);
         CompanionSocket.applyCompanionConnect(this);
 
-        this.serverId = `${this.server}-${this.port}`;
+        this.serverId = CompanionSocket.getServerId(this.server, this.port);
         this.guildId = guildId;
         this.runtimeDataStorage = getRuntimeDataStorage();
         this.persistentRuntimeStateRestored = false;
