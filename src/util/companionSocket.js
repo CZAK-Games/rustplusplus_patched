@@ -109,6 +109,33 @@ function applyCompanionConnect(instance) {
     };
 }
 
+/*  Accepts the login page's JSON ({"SteamId":"..","Token":".."}) or just the token itself.
+    Returns { steamId, expires } or null when the text is not a valid token. */
+function saveTokenFromText(text) {
+    let token = String(text).trim();
+    let steamId = null;
+    try {
+        const json = JSON.parse(token);
+        token = json.Token ?? json.token ?? '';
+        steamId = json.SteamId ?? json.steamId ?? null;
+    }
+    catch (e) { /* not JSON, treat as the raw token */ }
+
+    token = String(token).trim();
+    let payload;
+    try {
+        payload = JSON.parse(Buffer.from(token.split('.')[0], 'base64').toString('utf8'));
+    }
+    catch (e) {
+        return null;
+    }
+    steamId = String(steamId ?? payload.steamId ?? '');
+    if (!/^\d{17}$/.test(steamId) || !payload.exp) return null;
+
+    setToken(steamId, token);
+    return { steamId: steamId, expires: new Date(payload.exp * 1000) };
+}
+
 const REMIND_BEFORE_MS = 3 * 24 * 60 * 60 * 1000;
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const REMIND_EVERY_MS = 24 * 60 * 60 * 1000;
@@ -153,4 +180,4 @@ function startExpiryReminder(client) {
     return setInterval(run, CHECK_INTERVAL_MS);
 }
 
-module.exports = { startExpiryReminder, isCompanionId, getServerIdFromBody, getToken, setToken, tokenExpiry, applyCompanionConnect };
+module.exports = { saveTokenFromText, startExpiryReminder, isCompanionId, getServerIdFromBody, getToken, setToken, tokenExpiry, applyCompanionConnect };

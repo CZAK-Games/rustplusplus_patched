@@ -45,6 +45,21 @@ module.exports = async (client, interaction) => {
         return;
     }
 
+    if (interaction.customId === 'FacepunchToken') {
+        if (!client.isAdministrator(interaction)) {
+            await client.interactionReply(interaction,
+                DiscordEmbeds.getActionInfoEmbed(1, client.intlGet(guildId, 'missingPermission')));
+            return;
+        }
+        const saved = require('../util/companionSocket.js')
+            .saveTokenFromText(interaction.fields.getTextInputValue('token'));
+        const str = saved ?
+            `Zapisano token Facepunch dla ${saved.steamId}, wazny do ${saved.expires.toISOString().slice(0, 16)} UTC.` :
+            'Nie rozpoznano tokenu. Wklej caly JSON ze strony logowania lub sam token.';
+        await client.interactionReply(interaction, DiscordEmbeds.getActionInfoEmbed(saved ? 0 : 1, str));
+        return;
+    }
+
     if (interaction.customId.startsWith('CustomTimersEdit')) {
         const ids = JSON.parse(interaction.customId.replace('CustomTimersEdit', ''));
         const server = instance.serverList[ids.serverId];
