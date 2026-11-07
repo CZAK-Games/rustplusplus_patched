@@ -93,8 +93,14 @@ function applyCompanionConnect(instance) {
             this.websocket.on('open', () => this.emit('connected'));
             this.websocket.on('error', (e) => this.emit('error', e));
             this.websocket.on('unexpected-response', (req, res) => {
-                this.emit('error', new Error(`Facepunch companion socket rejected the connection ` +
-                    `(HTTP ${res.statusCode}), the login token may have expired`));
+                const hint = (res.statusCode === 401 || res.statusCode === 403) ?
+                    ', the login token may have expired' : ', the server may be restarting';
+                this.emit('error', new Error(
+                    `Facepunch companion socket rejected the connection (HTTP ${res.statusCode})${hint}`));
+
+                /* With this listener ws no longer aborts the handshake by itself, so no "close" would follow and
+                   the bot would never retry. Abort it ourselves to get the normal disconnect + reconnect. */
+                this.websocket.terminate();
             });
 
             this.websocket.on('message', (data) => {
