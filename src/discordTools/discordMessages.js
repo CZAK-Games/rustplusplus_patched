@@ -228,6 +228,10 @@ module.exports = {
     },
 
     sendStorageMonitorNotFoundMessage: async function (guildId, serverId, entityId) {
+        /* After a disconnect, requests still in flight fail (e.g. "Tokens did not replenish in time") and
+           would be reported as a missing device. Only report while a connection exists. */
+        if (!Client.client.rustplusInstances[guildId]) return;
+
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].storageMonitors[entityId];
 
@@ -242,6 +246,10 @@ module.exports = {
     },
 
     sendSmartSwitchNotFoundMessage: async function (guildId, serverId, entityId) {
+        /* After a disconnect, requests still in flight fail (e.g. "Tokens did not replenish in time") and
+           would be reported as a missing device. Only report while a connection exists. */
+        if (!Client.client.rustplusInstances[guildId]) return;
+
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].switches[entityId];
 
@@ -255,6 +263,10 @@ module.exports = {
     },
 
     sendSmartAlarmNotFoundMessage: async function (guildId, serverId, entityId) {
+        /* After a disconnect, requests still in flight fail (e.g. "Tokens did not replenish in time") and
+           would be reported as a missing device. Only report while a connection exists. */
+        if (!Client.client.rustplusInstances[guildId]) return;
+
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].alarms[entityId];
 
