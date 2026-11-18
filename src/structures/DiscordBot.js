@@ -308,8 +308,71 @@ class DiscordBot extends Discord.Client {
         this.activeRustplusInstances[guildId] = true;
 
         rustplus.build();
+        this.startRustplusConnectWatchdog(rustplus);
 
         return rustplus;
+    }
+
+    /**
+     *  A connection attempt can fail silently: the websocket is built inside a promise, so an exception there
+     *  (or a missing Facepunch token, or a handshake that never completes) emits neither 'connected' nor
+     *  'disconnected'. Nothing would then schedule the next retry and the bot stays on 'reconnecting' forever.
+     *  This watchdog gives every attempt a deadline, and when it passes without 'connected' it drops the instance
+     *  and schedules a new one.
+     */
+    startRustplusConnectWatchdog(rustplus) {
+        const guildId = rustplus.guildId;
+        const timeoutMs = Number(Config.general.connectTimeoutMs);
+
+        rustplus.connectWatchdogTimer = setTimeout(async () => {
+            rustplus.connectWatchdogTimer = null;
+
+            /* Ignore if this attempt was replaced, deleted or cancelled in the meantime */
+            if (rustplus.isDeleted) return;
+            if (this.rustplusInstances[guildId] !== rustplus) return;
+            if (!this.activeRustplusInstances[guildId]) return;
+
+            rustplus.log(this.intlGet(null, 'errorCap'),
+                `No connection established within ${Math.round(timeoutMs / 1000)}s, retrying.`, 'error');
+
+            /* Mark as deleted so a late 'disconnected' event of this attempt does not schedule a second retry */
+            rustplus.isDeleted = true;
+            rustplus.disconnect();
+
+            const alreadyReconnecting = this.rustplusReconnecting[guildId];
+            this.rustplusReconnecting[guildId] = true;
+            delete this.rustplusInstances[guildId];
+
+            const retry = () => {
+                this.rustplusReconnectTimers[guildId] = null;
+                if (!this.activeRustplusInstances[guildId]) return;
+
+                try {
+                    this.createRustplusInstance(guildId, rustplus.server, rustplus.port,
+                        rustplus.playerId, rustplus.playerToken);
+                }
+                catch (e) {
+                    /* Building the instance itself failed, try again later instead of giving up */
+                    this.log(this.intlGet(null, 'errorCap'), `Could not create rustplus instance: ${e}`, 'error');
+                    delete this.rustplusInstances[guildId];
+                    this.rustplusReconnectTimers[guildId] = setTimeout(retry, Number(Config.general.reconnectIntervalMs));
+                }
+            };
+
+            if (this.rustplusReconnectTimers[guildId]) clearTimeout(this.rustplusReconnectTimers[guildId]);
+            this.rustplusReconnectTimers[guildId] = setTimeout(retry, Number(Config.general.reconnectIntervalMs));
+
+            if (!alreadyReconnecting) {
+                try {
+                    const DiscordMessages = require('../discordTools/discordMessages.js');
+                    await DiscordMessages.sendServerChangeStateMessage(guildId, rustplus.serverId, 1);
+                    await DiscordMessages.sendServerMessage(guildId, rustplus.serverId, 2);
+                }
+                catch (e) {
+                    this.log(this.intlGet(null, 'errorCap'), `Could not send reconnecting message: ${e}`, 'error');
+                }
+            }
+        }, timeoutMs);
     }
 
     createRustplusInstancesFromConfig() {

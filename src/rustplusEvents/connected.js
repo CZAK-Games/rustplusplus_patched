@@ -26,6 +26,8 @@ const PollingHandler = require('../handlers/pollingHandler.js');
 module.exports = {
     name: 'connected',
     async execute(rustplus, client) {
+        clearTimeout(rustplus.connectWatchdogTimer);
+
         if (!rustplus.isServerAvailable()) return rustplus.deleteThisRustplusInstance();
 
         rustplus.log(client.intlGet(null, 'connectedCap'), client.intlGet(null, 'connectedToServer'));

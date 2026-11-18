@@ -25,6 +25,8 @@ const Config = require('../../config');
 module.exports = {
     name: 'disconnected',
     async execute(rustplus, client) {
+        clearTimeout(rustplus.connectWatchdogTimer);
+
         if (!rustplus.isServerAvailable() && !rustplus.isDeleted) {
             rustplus.deleteThisRustplusInstance();
         }

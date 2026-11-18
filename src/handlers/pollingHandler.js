@@ -31,16 +31,37 @@ const TimeHandler = require('../handlers/timeHandler.js');
 const VendingMachines = require('../handlers/vendingMachineHandler.js');
 
 module.exports = {
+    /*  A websocket can stay open while the server (or the Facepunch companion proxy in between) no longer answers.
+        No 'close' event follows, so no reconnect would ever be scheduled and every poll just times out forever.
+        After this many failed polls in a row the connection is dropped to force the normal reconnect. */
+    MAX_POLL_FAILURES: 3,
+
+    pollFailed: function (rustplus, client) {
+        rustplus.pollFailures = (rustplus.pollFailures || 0) + 1;
+        if (rustplus.pollFailures < module.exports.MAX_POLL_FAILURES || rustplus.isRecyclingConnection) return;
+
+        rustplus.isRecyclingConnection = true;
+        rustplus.log(client.intlGet(null, 'errorCap'),
+            `No valid response from the server for ${rustplus.pollFailures} polls in a row, reconnecting.`, 'error');
+
+        /* Terminates the websocket, which emits 'close' -> 'disconnected' -> the normal reconnect path */
+        rustplus.disconnect();
+    },
+
     pollingHandler: async function (rustplus, client) {
+        if (rustplus.isRecyclingConnection) return;
+
         /* Poll information such as info, mapMarkers, teamInfo and time */
         let info = await rustplus.getInfoAsync();
-        if (!(await rustplus.isResponseValid(info))) return;
+        if (!(await rustplus.isResponseValid(info))) return module.exports.pollFailed(rustplus, client);
         let mapMarkers = await rustplus.getMapMarkersAsync();
-        if (!(await rustplus.isResponseValid(mapMarkers))) return;
+        if (!(await rustplus.isResponseValid(mapMarkers))) return module.exports.pollFailed(rustplus, client);
         let teamInfo = await rustplus.getTeamInfoAsync();
-        if (!(await rustplus.isResponseValid(teamInfo))) return;
+        if (!(await rustplus.isResponseValid(teamInfo))) return module.exports.pollFailed(rustplus, client);
         let time = await rustplus.getTimeAsync();
-        if (!(await rustplus.isResponseValid(time))) return;
+        if (!(await rustplus.isResponseValid(time))) return module.exports.pollFailed(rustplus, client);
+
+        rustplus.pollFailures = 0;
 
         if (rustplus.isFirstPoll) {
             rustplus.info = new Info(info.info);
