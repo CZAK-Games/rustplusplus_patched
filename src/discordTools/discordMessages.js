@@ -40,19 +40,31 @@ module.exports = {
             await DiscordTools.getMessageById(guildId, channelId, messageId) : undefined;
 
         if (message !== undefined) {
-            return await Client.client.messageEdit(message, content);
-        }
-        else {
-            const channel = DiscordTools.getTextChannelById(guildId, channelId);
-
-            if (!channel) {
-                Client.client.log(Client.client.intlGet(null, 'errorCap'),
-                    Client.client.intlGet(null, 'couldNotGetChannelWithId', { id: channelId }), 'error');
-                return;
+            try {
+                return await message.edit(content);
             }
+            catch (e) {
+                Client.client.log(Client.client.intlGet(null, 'errorCap'),
+                    Client.client.intlGet(null, 'messageEditFailed', { error: e }), 'error');
 
-            return await Client.client.messageSend(channel, content);
+                /*  10008 = Unknown Message: the stored message no longer exists (deleted, or only left in the
+                    cache). Without a new message the status button would never be updated again, so send a new
+                    one below and let the caller store its id. Other failures (rate limit, permissions) are not
+                    retried here to avoid posting duplicates. */
+                if (e.code !== 10008) return undefined;
+                if (message.channel && message.channel.messages) message.channel.messages.cache.delete(message.id);
+            }
         }
+
+        const channel = DiscordTools.getTextChannelById(guildId, channelId);
+
+        if (!channel) {
+            Client.client.log(Client.client.intlGet(null, 'errorCap'),
+                Client.client.intlGet(null, 'couldNotGetChannelWithId', { id: channelId }), 'error');
+            return;
+        }
+
+        return await Client.client.messageSend(channel, content);
     },
 
     sendServerMessage: async function (guildId, serverId, state = null, interaction = null) {
