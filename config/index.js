@@ -24,6 +24,7 @@ module.exports = {
         pollingIntervalMs: process.env.RPP_POLLING_INTERVAL || 10000,
         showCallStackError: process.env.RPP_LOG_CALL_STACK || false,
         reconnectIntervalMs: process.env.RPP_RECONNECT_INTERVAL || 15000,
+        giveUpAfterMs: process.env.RPP_GIVE_UP_AFTER || 15 * 60 * 1000, /* How long a server may keep accepting the connection without answering (e.g. while restarting) before the bot stops trying */
         connectTimeoutMs: process.env.RPP_CONNECT_TIMEOUT || 60000, /* Give up on a connection attempt that never reports connected/error/close and retry */
     },
     discord: {

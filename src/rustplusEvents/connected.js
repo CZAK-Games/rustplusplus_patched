@@ -22,6 +22,7 @@ const DiscordMessages = require('../discordTools/discordMessages.js');
 const Info = require('../structures/Info');
 const Map = require('../structures/Map');
 const PollingHandler = require('../handlers/pollingHandler.js');
+const Config = require('../../config');
 
 module.exports = {
     name: 'connected',
@@ -44,6 +45,22 @@ module.exports = {
         /* Request the map. Act as a check to see if connection is truly operational. */
         const map = await rustplus.getMapAsync(3 * 60 * 1000); /* 3 min timeout */
         if (!(await rustplus.isResponseValid(map))) {
+            /*  The socket opened but the server does not answer yet, which is normal while it is (re)starting.
+                Keep retrying through the normal reconnect path and only give up when it has been like this
+                continuously for longer than giveUpAfterMs. */
+            client.rustplusStartFailures = client.rustplusStartFailures || {};
+            const now = Date.now();
+            if (!client.rustplusStartFailures[guildId]) client.rustplusStartFailures[guildId] = now;
+            const failingForMs = now - client.rustplusStartFailures[guildId];
+
+            if (failingForMs < Number(Config.general.giveUpAfterMs)) {
+                rustplus.log(client.intlGet(null, 'errorCap'),
+                    `Server is not answering yet (${Math.round(failingForMs / 1000)}s), trying again.`, 'error');
+                rustplus.disconnect(); /* 'close' -> 'disconnected' -> reconnect */
+                return;
+            }
+
+            delete client.rustplusStartFailures[guildId];
             rustplus.log(client.intlGet(null, 'errorCap'),
                 client.intlGet(null, 'somethingWrongWithConnection'), 'error');
 
@@ -59,6 +76,7 @@ module.exports = {
             delete client.rustplusInstances[guildId];
             return;
         }
+        if (client.rustplusStartFailures) delete client.rustplusStartFailures[guildId];
         rustplus.log(client.intlGet(null, 'connectedCap'), client.intlGet(null, 'rustplusOperational'));
 
         const info = await rustplus.getInfoAsync();
