@@ -35,17 +35,31 @@ module.exports = {
         No 'close' event follows, so no reconnect would ever be scheduled and every poll just times out forever.
         After this many failed polls in a row the connection is dropped to force the normal reconnect. */
     MAX_POLL_FAILURES: 3,
+    DISCONNECT_FALLBACK_MS: 5000,
 
     pollFailed: function (rustplus, client) {
         rustplus.pollFailures = (rustplus.pollFailures || 0) + 1;
         if (rustplus.pollFailures < module.exports.MAX_POLL_FAILURES || rustplus.isRecyclingConnection) return;
 
         rustplus.isRecyclingConnection = true;
+        const socketState = rustplus.websocket ? rustplus.websocket.readyState : 'none';
         rustplus.log(client.intlGet(null, 'errorCap'),
-            `No valid response from the server for ${rustplus.pollFailures} polls in a row, reconnecting.`, 'error');
+            `No valid response from the server for ${rustplus.pollFailures} polls in a row, reconnecting ` +
+            `(websocket state: ${socketState}).`, 'error');
 
         /* Terminates the websocket, which emits 'close' -> 'disconnected' -> the normal reconnect path */
         rustplus.disconnect();
+
+        /*  Do not rely on that 'close' event alone. If it never arrives (nothing to terminate, or the socket
+            never reports closing) no reconnect would ever be scheduled and the bot stays dead. After a short
+            grace period run the disconnected handler ourselves; it ignores a second call. */
+        setTimeout(() => {
+            if (rustplus.disconnectedHandled || rustplus.isDeleted) return;
+
+            rustplus.log(client.intlGet(null, 'errorCap'),
+                'The connection did not report that it closed, forcing the reconnect.', 'error');
+            rustplus.emit('disconnected');
+        }, module.exports.DISCONNECT_FALLBACK_MS);
     },
 
     pollingHandler: async function (rustplus, client) {

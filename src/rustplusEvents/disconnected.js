@@ -25,6 +25,10 @@ const Config = require('../../config');
 module.exports = {
     name: 'disconnected',
     async execute(rustplus, client) {
+        /* An instance is disconnected only once: the real 'close' event and the forced one must not both reconnect */
+        if (rustplus.disconnectedHandled) return;
+        rustplus.disconnectedHandled = true;
+
         clearTimeout(rustplus.connectWatchdogTimer);
 
         if (!rustplus.isServerAvailable() && !rustplus.isDeleted) {
