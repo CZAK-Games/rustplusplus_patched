@@ -156,7 +156,7 @@ async function addCredentials(client, interaction, verifyId) {
         require('../util/FcmListenerLite')(client, DiscordTools.getGuild(interaction.guildId), steamId);
 
         const rustplus = client.rustplusInstances[guildId];
-        if (rustplus && rustplus.team.leaderSteamId === steamId) {
+        if (rustplus && rustplus.team && rustplus.team.leaderSteamId === steamId) {
             rustplus.updateLeaderRustPlusLiteInstance();
         }
     }

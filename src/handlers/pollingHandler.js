@@ -47,8 +47,13 @@ module.exports = {
             `No valid response from the server for ${rustplus.pollFailures} polls in a row, reconnecting ` +
             `(websocket state: ${socketState}).`, 'error');
 
-        /* Terminates the websocket, which emits 'close' -> 'disconnected' -> the normal reconnect path */
-        rustplus.disconnect();
+        /*  Terminates the websocket, which emits 'close' -> 'disconnected' -> the normal reconnect path.
+            An already closed socket (state 3) never emits 'close' again, so there the fallback runs right away. */
+        const alreadyClosed = !rustplus.websocket || rustplus.websocket.readyState >= 2;
+        try { rustplus.disconnect(); }
+        catch (e) {
+            rustplus.log(client.intlGet(null, 'errorCap'), `disconnect() failed: ${e}`, 'error');
+        }
 
         /*  Do not rely on that 'close' event alone. If it never arrives (nothing to terminate, or the socket
             never reports closing) no reconnect would ever be scheduled and the bot stays dead. After a short
@@ -59,7 +64,19 @@ module.exports = {
             rustplus.log(client.intlGet(null, 'errorCap'),
                 'The connection did not report that it closed, forcing the reconnect.', 'error');
             rustplus.emit('disconnected');
-        }, module.exports.DISCONNECT_FALLBACK_MS);
+        }, alreadyClosed ? 0 : module.exports.DISCONNECT_FALLBACK_MS);
+
+        /*  Last resort: if this instance is still the registered one a minute later, nothing scheduled a reconnect
+            (the disconnected handler failed half way, for example). Reset the guard and run it again. */
+        setTimeout(() => {
+            if (rustplus.isDeleted) return;
+            if (client.rustplusInstances[rustplus.guildId] !== rustplus) return;
+
+            rustplus.log(client.intlGet(null, 'errorCap'),
+                'Still no reconnect after 60s, forcing it again.', 'error');
+            rustplus.disconnectedHandled = false;
+            rustplus.emit('disconnected');
+        }, 60 * 1000);
     },
 
     pollingHandler: async function (rustplus, client) {

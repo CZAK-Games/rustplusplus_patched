@@ -544,6 +544,9 @@ class RustPlus extends RustPlusLib {
             this.leaderRustPlusInstance = null;
         }
 
+        /* The team is only known after the first successful poll */
+        if (!this.team) return;
+
         const instance = Client.client.getInstance(this.guildId);
         const leader = this.team.leaderSteamId;
         if (leader === this.playerId) return;
@@ -1891,6 +1894,8 @@ class RustPlus extends RustPlusLib {
         if (!this.generalSettings.leaderCommandEnabled) {
             return Client.client.intlGet(this.guildId, 'leaderCommandIsDisabled');
         }
+
+        if (!this.team) return null;
 
         const instance = Client.client.getInstance(this.guildId);
         if (!Object.keys(instance.serverListLite[this.serverId]).includes(this.team.leaderSteamId)) {
