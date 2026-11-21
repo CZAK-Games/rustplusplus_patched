@@ -74,6 +74,7 @@ module.exports = {
         }
 
         require('../util/companionSocket.js').startExpiryReminder(client);
+        client.startHealthWatchdog();
 
         if (Config.battlemetrics.enabled) {
             await client.updateBattlemetricsInstances();

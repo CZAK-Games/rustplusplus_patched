@@ -25,6 +25,7 @@ module.exports = {
         showCallStackError: process.env.RPP_LOG_CALL_STACK || false,
         reconnectIntervalMs: process.env.RPP_RECONNECT_INTERVAL || 15000,
         giveUpAfterMs: process.env.RPP_GIVE_UP_AFTER || 15 * 60 * 1000, /* How long a server may keep accepting the connection without answering (e.g. while restarting) before the bot stops trying */
+        unhealthyRestartMs: process.env.RPP_UNHEALTHY_RESTART || 10 * 60 * 1000, /* Exit (run.sh restarts the bot) when an active connection had no successful poll for this long. 0 = off */
         connectTimeoutMs: process.env.RPP_CONNECT_TIMEOUT || 60000, /* Give up on a connection attempt that never reports connected/error/close and retry */
     },
     discord: {

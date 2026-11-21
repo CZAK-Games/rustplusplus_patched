@@ -56,6 +56,7 @@ class DiscordBot extends Discord.Client {
         this.rustplusLiteReconnectTimers = new Object();
         this.rustplusReconnecting = new Object();
         this.rustplusMaps = new Object();
+        this.rustplusLastHealthyAt = new Object(); /* guildId -> time of the last successful poll (or start of trying) */
 
         this.uptimeBot = null;
 
@@ -306,6 +307,7 @@ class DiscordBot extends Discord.Client {
         /* Add rustplus instance to Object */
         this.rustplusInstances[guildId] = rustplus;
         this.activeRustplusInstances[guildId] = true;
+        if (!this.rustplusLastHealthyAt[guildId]) this.rustplusLastHealthyAt[guildId] = Date.now();
 
         rustplus.build();
         this.startRustplusConnectWatchdog(rustplus);
@@ -396,10 +398,39 @@ class DiscordBot extends Discord.Client {
         });
     }
 
+    /**
+     *  Last line of defence. The reconnect logic above can still end up stuck in some state nobody thought of
+     *  (this has happened: the bot sat dead for over an hour until /restartbot). If a connection that should be
+     *  active has not completed a single successful poll for unhealthyRestartMs, the process exits. run.sh then
+     *  starts it again, which is exactly what /restartbot does by hand.
+     */
+    startHealthWatchdog() {
+        const limitMs = Number(Config.general.unhealthyRestartMs);
+        if (!limitMs || limitMs <= 0) return null;
+
+        return setInterval(() => {
+            for (const guildId of Object.keys(this.activeRustplusInstances)) {
+                if (!this.activeRustplusInstances[guildId]) continue;
+
+                const since = this.rustplusLastHealthyAt[guildId];
+                if (!since) continue;
+
+                const unhealthyMs = Date.now() - since;
+                if (unhealthyMs < limitMs) continue;
+
+                this.log(this.intlGet(null, 'errorCap'),
+                    `No successful poll for ${Math.round(unhealthyMs / 1000)}s, restarting the bot.`, 'error');
+                setTimeout(() => process.exit(1), 1000);
+                return;
+            }
+        }, 30 * 1000);
+    }
+
     resetRustplusVariables(guildId) {
         this.activeRustplusInstances[guildId] = false;
         this.rustplusReconnecting[guildId] = false;
         delete this.rustplusMaps[guildId];
+        delete this.rustplusLastHealthyAt[guildId];
 
         if (this.rustplusReconnectTimers[guildId]) {
             clearTimeout(this.rustplusReconnectTimers[guildId]);

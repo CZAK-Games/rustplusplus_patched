@@ -93,6 +93,7 @@ module.exports = {
         if (!(await rustplus.isResponseValid(time))) return module.exports.pollFailed(rustplus, client);
 
         rustplus.pollFailures = 0;
+        client.rustplusLastHealthyAt[rustplus.guildId] = Date.now();
 
         if (rustplus.isFirstPoll) {
             rustplus.info = new Info(info.info);
