@@ -54,7 +54,8 @@ module.exports = async (client, interaction) => {
         const saved = require('../util/companionSocket.js')
             .saveTokenFromText(interaction.fields.getTextInputValue('token'));
         const str = saved ?
-            `Zapisano token Facepunch dla ${saved.steamId}, wazny do ${saved.expires.toISOString().slice(0, 16)} UTC.` :
+            `Zapisano token Facepunch dla ${saved.steamId}, wazny do ${saved.expires.toISOString().slice(0, 16)} UTC. ` +
+            'Urzadzenia z historii Rust+ pobierzesz komenda /syncdevices.' :
             'Nie rozpoznano tokenu. Wklej caly JSON ze strony logowania lub sam token.';
         await client.interactionReply(interaction, DiscordEmbeds.getActionInfoEmbed(saved ? 0 : 1, str));
         return;

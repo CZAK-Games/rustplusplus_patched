@@ -32,6 +32,7 @@ const DiscordMessages = require('../discordTools/discordMessages.js');
 const DiscordTools = require('../discordTools/discordTools.js');
 const InstanceUtils = require('../util/instanceUtils.js');
 const Map = require('../util/map.js');
+const PairingHistory = require('./pairingHistory.js');
 const Scrape = require('../util/scrape.js');
 
 module.exports = async (client, guild) => {
@@ -553,3 +554,67 @@ async function teamLogin(client, guild, title, message, body) {
 //
 //    await DiscordMessages.sendMessage(guild.id, content, null, instance.channelId.activity);
 //}
+
+/*  Rebuilds servers and devices from the pairing notifications in the Rust+ history (what app.playrust.com shows).
+    Used by /syncdevices. Servers and devices that are already in the bot are left alone. A device whose server is
+    not in the bot is skipped, the server has to be paired (in game) or be part of the history as well. */
+async function syncPairingHistory(client, guild) {
+    const hoster = InstanceUtils.readCredentialsFile(guild.id).hoster;
+    if (!hoster) return { error: 'noHoster' };
+
+    const token = CompanionSocket.getToken(hoster);
+    if (!token) return { error: 'noToken' };
+
+    const history = await PairingHistory.fetchHistory(token);
+    const pairings = PairingHistory.extractPairings(history, hoster);
+
+    const result = { servers: 0, switches: 0, alarms: 0, storageMonitors: 0, existing: 0, noServer: 0, failed: 0 };
+
+    for (const pairing of pairings.servers) {
+        const serverId = CompanionSocket.getServerIdFromBody(pairing.data);
+        if (client.getInstance(guild.id).serverList.hasOwnProperty(serverId)) continue;
+
+        try {
+            await pairingServer(client, guild, pairing.title, pairing.body, pairing.data);
+            result.servers += 1;
+        }
+        catch (e) {
+            client.log('ERROR', `syncPairingHistory server ${pairing.title}: ${e}`, 'error');
+            result.failed += 1;
+        }
+    }
+
+    const kinds = {
+        'Smart Switch': { list: 'switches', handler: pairingEntitySwitch },
+        'Smart Alarm': { list: 'alarms', handler: pairingEntitySmartAlarm },
+        'Storage Monitor': { list: 'storageMonitors', handler: pairingEntityStorageMonitor }
+    };
+
+    for (const pairing of pairings.entities) {
+        const kind = kinds[pairing.data.entityName];
+        if (!kind) continue;
+
+        const server = client.getInstance(guild.id).serverList[CompanionSocket.getServerIdFromBody(pairing.data)];
+        if (!server) {
+            result.noServer += 1;
+            continue;
+        }
+        if (server[kind.list].hasOwnProperty(pairing.data.entityId)) {
+            result.existing += 1;
+            continue;
+        }
+
+        try {
+            await kind.handler(client, guild, pairing.title, pairing.body, pairing.data);
+            result[kind.list] += 1;
+        }
+        catch (e) {
+            client.log('ERROR', `syncPairingHistory ${pairing.data.entityName} ${pairing.data.entityId}: ${e}`, 'error');
+            result.failed += 1;
+        }
+    }
+
+    return result;
+}
+
+module.exports.syncPairingHistory = syncPairingHistory;
