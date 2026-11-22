@@ -83,7 +83,7 @@ function applyCompanionConnect(instance) {
             const token = getToken(this.playerId);
             if (!token) {
                 this.emit('error', new Error(`No Facepunch login token for steamId ${this.playerId}, ` +
-                    `run: node scripts/set_facepunch_token.js`));
+                    `use /facepunchtoken or run: node scripts/set_facepunch_token.js`));
                 return;
             }
 
@@ -179,7 +179,7 @@ async function checkTokenExpiry(client) {
                 ? `Token logowania Facepunch (Steam ${steamId}) wygasa ${when}.`
                 : `Token logowania Facepunch (Steam ${steamId}) wygasl ${when}, bot nie polaczy sie z serwerami.`;
             await client.messageSend(channel, {
-                content: `${text} Zaloguj sie ponownie i uruchom na serwerze: node scripts/set_facepunch_token.js`
+                content: `${text} Zaloguj sie ponownie i wklej token przez /facepunchtoken (lub na serwerze: node scripts/set_facepunch_token.js)`
             });
             lastReminder[steamId] = Date.now();
         }
