@@ -296,7 +296,7 @@ async function pairingEntitySwitch(client, guild, title, message, body) {
     instance.serverList[serverId].switches[body.entityId] = {
         active: entityExist ? switches[body.entityId].active : false,
         reachable: entityExist ? switches[body.entityId].reachable : true,
-        name: entityExist ? switches[body.entityId].name : client.intlGet(guild.id, 'smartSwitch'),
+        name: entityExist ? switches[body.entityId].name : (body.customName || client.intlGet(guild.id, 'smartSwitch')),
         command: entityExist ? switches[body.entityId].command : body.entityId,
         image: entityExist ? switches[body.entityId].image : 'smart_switch.png',
         autoDayNightOnOff: entityExist ? switches[body.entityId].autoDayNightOnOff : 0,
@@ -347,7 +347,7 @@ async function pairingEntitySmartAlarm(client, guild, title, message, body) {
         active: entityExist ? alarms[body.entityId].active : false,
         reachable: entityExist ? alarms[body.entityId].reachable : true,
         everyone: entityExist ? alarms[body.entityId].everyone : false,
-        name: entityExist ? alarms[body.entityId].name : client.intlGet(guild.id, 'smartAlarm'),
+        name: entityExist ? alarms[body.entityId].name : (body.customName || client.intlGet(guild.id, 'smartAlarm')),
         message: entityExist ? alarms[body.entityId].message : client.intlGet(guild.id, 'baseIsUnderAttack'),
         lastTrigger: entityExist ? alarms[body.entityId].lastTrigger : null,
         command: entityExist ? alarms[body.entityId].command : body.entityId,
@@ -392,7 +392,8 @@ async function pairingEntityStorageMonitor(client, guild, title, message, body) 
 
     const entityExist = instance.serverList[serverId].storageMonitors.hasOwnProperty(body.entityId);
     instance.serverList[serverId].storageMonitors[body.entityId] = {
-        name: entityExist ? storageMonitors[body.entityId].name : client.intlGet(guild.id, 'storageMonitor'),
+        name: entityExist ? storageMonitors[body.entityId].name :
+            (body.customName || client.intlGet(guild.id, 'storageMonitor')),
         reachable: entityExist ? storageMonitors[body.entityId].reachable : true,
         id: entityExist ? storageMonitors[body.entityId].id : body.entityId,
         type: entityExist ? storageMonitors[body.entityId].type : null,
@@ -555,9 +556,11 @@ async function teamLogin(client, guild, title, message, body) {
 //    await DiscordMessages.sendMessage(guild.id, content, null, instance.channelId.activity);
 //}
 
-/*  Rebuilds servers and devices from the pairing notifications in the Rust+ history (what app.playrust.com shows).
-    Used by /syncdevices. Servers and devices that are already in the bot are left alone. A device whose server is
-    not in the bot is skipped, the server has to be paired (in game) or be part of the history as well. */
+/*  Rebuilds servers and devices from the Rust+ account (used by /syncdevices), from two sources that the Rust+ web app
+    (app.playrust.com) uses: the saved app state (all servers and devices with the names given in the app) and the
+    notification history (pairings of the last days). The app state wins when a device is in both.
+    Servers and devices that are already in the bot are left alone. A server that is not in the bot is only added
+    when it has devices to add, and a device whose server is not in the bot is skipped. */
 async function syncPairingHistory(client, guild) {
     const hoster = InstanceUtils.readCredentialsFile(guild.id).hoster;
     if (!hoster) return { error: 'noHoster' };
@@ -565,14 +568,63 @@ async function syncPairingHistory(client, guild) {
     const token = CompanionSocket.getToken(hoster);
     if (!token) return { error: 'noToken' };
 
-    const history = await PairingHistory.fetchHistory(token);
-    const pairings = PairingHistory.extractPairings(history, hoster);
+    const [appState, history] = await Promise.allSettled([
+        PairingHistory.fetchAppState(token), PairingHistory.fetchHistory(token)]);
+    if (appState.status === 'rejected' && history.status === 'rejected') throw appState.reason;
 
-    const result = { servers: 0, switches: 0, alarms: 0, storageMonitors: 0, existing: 0, noServer: 0, failed: 0 };
+    const result = {
+        servers: 0, switches: 0, alarms: 0, storageMonitors: 0, existing: 0, serversWithoutDevices: 0, noServer: 0,
+        failed: 0, sourceErrors: []
+    };
 
-    for (const pairing of pairings.servers) {
+    const fromApp = { servers: [], entities: [] };
+    if (appState.status === 'fulfilled') Object.assign(fromApp, PairingHistory.extractAppState(appState.value, hoster));
+    else result.sourceErrors.push(`app state: ${appState.reason.message}`);
+
+    const fromHistory = { servers: [], entities: [] };
+    if (history.status === 'fulfilled') Object.assign(fromHistory, PairingHistory.extractPairings(history.value, hoster));
+    else result.sourceErrors.push(`history: ${history.reason.message}`);
+
+    /* Plain objects, "Map" is the map util in this file. */
+    const servers = {};
+    const entities = {};
+    for (const pairing of [...fromApp.servers, ...fromHistory.servers]) {
+        if (!servers[pairing.data.id]) servers[pairing.data.id] = pairing;
+    }
+    for (const pairing of [...fromApp.entities, ...fromHistory.entities]) {
+        const key = `${pairing.data.id}/${pairing.data.entityId}`;
+        if (!entities[key]) entities[key] = pairing;
+    }
+
+    const kinds = {
+        'Smart Switch': { list: 'switches', handler: pairingEntitySwitch },
+        'Smart Alarm': { list: 'alarms', handler: pairingEntitySmartAlarm },
+        'Storage Monitor': { list: 'storageMonitors', handler: pairingEntityStorageMonitor }
+    };
+
+    /* Devices the bot does not have yet, per server (uuid). */
+    const missing = {};
+    for (const pairing of Object.values(entities)) {
+        const kind = kinds[pairing.data.entityName];
+        if (!kind) continue;
+
+        const server = client.getInstance(guild.id).serverList[CompanionSocket.getServerIdFromBody(pairing.data)];
+        if (server && server[kind.list].hasOwnProperty(pairing.data.entityId)) {
+            result.existing += 1;
+            continue;
+        }
+        if (!missing[pairing.data.id]) missing[pairing.data.id] = [];
+        missing[pairing.data.id].push({ pairing, kind });
+    }
+
+    for (const pairing of Object.values(servers)) {
         const serverId = CompanionSocket.getServerIdFromBody(pairing.data);
         if (client.getInstance(guild.id).serverList.hasOwnProperty(serverId)) continue;
+
+        if (!missing[pairing.data.id]) {
+            result.serversWithoutDevices += 1;
+            continue;
+        }
 
         try {
             await pairingServer(client, guild, pairing.title, pairing.body, pairing.data);
@@ -584,33 +636,23 @@ async function syncPairingHistory(client, guild) {
         }
     }
 
-    const kinds = {
-        'Smart Switch': { list: 'switches', handler: pairingEntitySwitch },
-        'Smart Alarm': { list: 'alarms', handler: pairingEntitySmartAlarm },
-        'Storage Monitor': { list: 'storageMonitors', handler: pairingEntityStorageMonitor }
-    };
+    for (const items of Object.values(missing)) {
+        for (const { pairing, kind } of items) {
+            const serverId = CompanionSocket.getServerIdFromBody(pairing.data);
+            if (!client.getInstance(guild.id).serverList.hasOwnProperty(serverId)) {
+                result.noServer += 1;
+                continue;
+            }
 
-    for (const pairing of pairings.entities) {
-        const kind = kinds[pairing.data.entityName];
-        if (!kind) continue;
-
-        const server = client.getInstance(guild.id).serverList[CompanionSocket.getServerIdFromBody(pairing.data)];
-        if (!server) {
-            result.noServer += 1;
-            continue;
-        }
-        if (server[kind.list].hasOwnProperty(pairing.data.entityId)) {
-            result.existing += 1;
-            continue;
-        }
-
-        try {
-            await kind.handler(client, guild, pairing.title, pairing.body, pairing.data);
-            result[kind.list] += 1;
-        }
-        catch (e) {
-            client.log('ERROR', `syncPairingHistory ${pairing.data.entityName} ${pairing.data.entityId}: ${e}`, 'error');
-            result.failed += 1;
+            try {
+                await kind.handler(client, guild, pairing.title, pairing.body, pairing.data);
+                result[kind.list] += 1;
+            }
+            catch (e) {
+                client.log('ERROR',
+                    `syncPairingHistory ${pairing.data.entityName} ${pairing.data.entityId}: ${e}`, 'error');
+                result.failed += 1;
+            }
         }
     }
 

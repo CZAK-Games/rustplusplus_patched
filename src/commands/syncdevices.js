@@ -1,6 +1,6 @@
 /*
-    /syncdevices - fetches the servers and devices (Smart Switch, Smart Alarm, Storage Monitor) that were paired
-    recently from the Rust+ history (what app.playrust.com shows) and adds the ones the bot does not have yet.
+    /syncdevices - fetches the servers and devices (Smart Switch, Smart Alarm, Storage Monitor) of the Rust+ account
+    (app state and recent pairing history, what app.playrust.com shows) and adds the ones the bot does not have yet.
     Needs the Facepunch login token (/facepunchtoken). Administrators only.
 */
 
@@ -14,7 +14,7 @@ module.exports = {
     getData(client, guildId) {
         return new Builder.SlashCommandBuilder()
             .setName('syncdevices')
-            .setDescription('Fetch recently paired servers and devices from the Rust+ history (administrators only).');
+            .setDescription('Fetch servers and devices from the Rust+ account (administrators only).');
     },
 
     async execute(client, interaction) {
@@ -46,12 +46,14 @@ module.exports = {
                 str = `Dodano: serwery ${result.servers}, przelaczniki ${result.switches}, ` +
                     `alarmy ${result.alarms}, monitory skrzynek ${result.storageMonitors}. ` +
                     `Pominieto (juz w bocie): ${result.existing}.`;
+                if (result.serversWithoutDevices > 0) {
+                    str += ` Serwery bez urzadzen do dodania (pominiete): ${result.serversWithoutDevices}.`;
+                }
                 if (result.noServer > 0) {
-                    str += ` ${result.noServer} urzadzen bez serwera w bocie, sparuj ten serwer w grze i uruchom komende ` +
-                        `jeszcze raz.`;
+                    str += ` ${result.noServer} urzadzen bez serwera w bocie.`;
                 }
                 if (result.failed > 0) str += ` Bledy: ${result.failed}, szczegoly w logu.`;
-                str += ' Historia Rust+ obejmuje tylko ostatnie dni, starsze urzadzenia trzeba sparowac w grze.';
+                if (result.sourceErrors.length > 0) str += ` Nie udalo sie pobrac: ${result.sourceErrors.join('; ')}.`;
             }
         }
         catch (e) {
