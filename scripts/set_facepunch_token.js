@@ -30,7 +30,8 @@ else {
     };
     if (args.length === 1) handle(args[0]);
     else {
-        console.log('Paste the JSON from the login page and press Enter:');
+        console.log('Log in at https://companion-rust.facepunch.com/login with the Tampermonkey script tools/rustplus-token-catcher.user.js active.');
+        console.log('Paste the JSON from the red box and press Enter:');
         process.stdin.once('data', (d) => { handle(d.toString()); process.exit(0); });
     }
 }

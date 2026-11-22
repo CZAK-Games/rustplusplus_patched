@@ -179,7 +179,7 @@ async function checkTokenExpiry(client) {
                 ? `Token logowania Facepunch (Steam ${steamId}) wygasa ${when}.`
                 : `Token logowania Facepunch (Steam ${steamId}) wygasl ${when}, bot nie polaczy sie z serwerami.`;
             await client.messageSend(channel, {
-                content: `${text} Zaloguj sie ponownie i wklej token przez /facepunchtoken (lub na serwerze: node scripts/set_facepunch_token.js)`
+                content: `${text} Zaloguj sie ponownie (Tampermonkey + https://companion-rust.facepunch.com/login), skopiuj token z czerwonej ramki i wklej go przez /facepunchtoken (lub na serwerze: node scripts/set_facepunch_token.js)`
             });
             lastReminder[steamId] = Date.now();
         }

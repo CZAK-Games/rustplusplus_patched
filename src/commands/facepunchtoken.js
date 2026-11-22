@@ -37,6 +37,7 @@ module.exports = {
             new Discord.TextInputBuilder()
                 .setCustomId('token')
                 .setLabel('JSON z strony logowania lub sam token')
+                .setPlaceholder('Z czerwonej ramki po zalogowaniu na companion-rust.facepunch.com/login')
                 .setStyle(Discord.TextInputStyle.Paragraph)
                 .setRequired(true)));
 
