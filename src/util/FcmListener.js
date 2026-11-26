@@ -561,7 +561,7 @@ async function teamLogin(client, guild, title, message, body) {
     notification history (pairings of the last days). The app state wins when a device is in both.
     Servers and devices that are already in the bot are left alone. A server that is not in the bot is only added
     when it has devices to add, and a device whose server is not in the bot is skipped. */
-async function syncPairingHistory(client, guild) {
+async function syncPairingHistory(client, guild, force = false) {
     const hoster = InstanceUtils.readCredentialsFile(guild.id).hoster;
     if (!hoster) return { error: 'noHoster' };
 
@@ -574,7 +574,8 @@ async function syncPairingHistory(client, guild) {
 
     const result = {
         servers: 0, switches: 0, alarms: 0, storageMonitors: 0, existing: 0, serversWithoutDevices: 0, noServer: 0,
-        failed: 0, sourceErrors: []
+        failed: 0, sourceErrors: [],
+        reposted: { switches: 0, alarms: 0, storageMonitors: 0 }, repostSkipped: 0, repostScope: null
     };
 
     const fromApp = { servers: [], entities: [] };
@@ -656,7 +657,88 @@ async function syncPairingHistory(client, guild) {
         }
     }
 
+    if (force) await repostDevices(client, guild, result);
+
     return result;
+}
+
+/*  Force mode of /syncdevices: posts the devices that are already in the bot to Discord again. Needed when the device
+    channels were cleared by hand, because the bot only rebuilds them when it (re)connects to a server, and the pairing
+    handlers only post Smart Switches and Storage Monitors while the bot is connected to that very server.
+    The Discord channels show the devices of one server at a time, so with an active connection only the devices of
+    the connected server are posted. Without a connection the devices of every server in the bot are posted (the
+    Storage Monitor embed then shows "not connected"). Messages that still exist are edited, missing ones are sent
+    again (see DiscordMessages.sendMessage), so nothing is duplicated. */
+async function repostDevices(client, guild, result) {
+    const rustplus = client.rustplusInstances[guild.id];
+    const instance = client.getInstance(guild.id);
+
+    const serverIds = rustplus && instance.serverList.hasOwnProperty(rustplus.serverId) ?
+        [rustplus.serverId] : Object.keys(instance.serverList);
+    result.repostScope = rustplus ? 'connected' : 'all';
+
+    for (const serverId of serverIds) {
+        const server = client.getInstance(guild.id).serverList[serverId];
+        if (!server) continue;
+
+        for (const entityId of Object.keys(server.switches)) {
+            try {
+                await DiscordMessages.sendSmartSwitchMessage(guild.id, serverId, entityId);
+                result.reposted.switches += 1;
+            }
+            catch (e) {
+                client.log('ERROR', `syncPairingHistory force switch ${entityId}: ${e}`, 'error');
+                result.failed += 1;
+            }
+        }
+
+        for (const entityId of Object.keys(server.alarms)) {
+            try {
+                await DiscordMessages.sendSmartAlarmMessage(guild.id, serverId, entityId);
+                result.reposted.alarms += 1;
+            }
+            catch (e) {
+                client.log('ERROR', `syncPairingHistory force alarm ${entityId}: ${e}`, 'error');
+                result.failed += 1;
+            }
+        }
+
+        for (const entityId of Object.keys(server.storageMonitors)) {
+            try {
+                const connectedHere = rustplus && rustplus.serverId === serverId;
+
+                /* The embed reads rustplus.storageMonitors[entityId], so load the state first when it is missing. */
+                if (connectedHere && !rustplus.storageMonitors.hasOwnProperty(entityId)) {
+                    const info = await rustplus.getEntityInfoAsync(entityId);
+                    const entity = client.getInstance(guild.id).serverList[serverId].storageMonitors[entityId];
+                    if (await rustplus.isResponseValid(info)) {
+                        entity.reachable = true;
+                        rustplus.storageMonitors[entityId] = {
+                            items: info.entityInfo.payload.items,
+                            expiry: info.entityInfo.payload.protectionExpiry,
+                            capacity: info.entityInfo.payload.capacity,
+                            hasProtection: info.entityInfo.payload.hasProtection
+                        };
+                    }
+                    else {
+                        entity.reachable = false;
+                    }
+                    client.setInstance(guild.id, client.getInstance(guild.id));
+                }
+                else if (rustplus && !connectedHere) {
+                    result.repostSkipped += 1;
+                    continue;
+                }
+
+                await DiscordMessages.sendStorageMonitorMessage(guild.id, serverId, entityId);
+                result.reposted.storageMonitors += 1;
+            }
+            catch (e) {
+                client.log('ERROR', `syncPairingHistory force storage monitor ${entityId}: ${e}`, 'error');
+                result.failed += 1;
+            }
+        }
+    }
 }
 
 module.exports.syncPairingHistory = syncPairingHistory;

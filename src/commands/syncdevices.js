@@ -14,7 +14,11 @@ module.exports = {
     getData(client, guildId) {
         return new Builder.SlashCommandBuilder()
             .setName('syncdevices')
-            .setDescription('Fetch servers and devices from the Rust+ account (administrators only).');
+            .setDescription('Fetch servers and devices from the Rust+ account (administrators only).')
+            .addBooleanOption(option => option
+                .setName('force')
+                .setDescription('Also post the devices already in the bot to Discord again (e.g. after clearing channels).')
+                .setRequired(false));
     },
 
     async execute(client, interaction) {
@@ -31,9 +35,12 @@ module.exports = {
 
         await interaction.deferReply({ ephemeral: true });
 
+        const force = interaction.options.getBoolean('force') ?? false;
+
         let str, failed = true;
         try {
-            const result = await require('../util/FcmListener.js').syncPairingHistory(client, interaction.guild);
+            const result = await require('../util/FcmListener.js').syncPairingHistory(
+                client, interaction.guild, force);
 
             if (result.error === 'noToken') {
                 str = 'Brak tokenu Facepunch. Najpierw wklej go przez /facepunchtoken.';
@@ -51,6 +58,17 @@ module.exports = {
                 }
                 if (result.noServer > 0) {
                     str += ` ${result.noServer} urzadzen bez serwera w bocie.`;
+                }
+                if (force) {
+                    const r = result.reposted;
+                    str += ` Force: ponownie wyslano na Discord przelaczniki ${r.switches}, alarmy ${r.alarms}, ` +
+                        `monitory skrzynek ${r.storageMonitors}` +
+                        (result.repostScope === 'connected' ?
+                            ' (tylko serwer, z ktorym bot jest polaczony).' :
+                            ' (bot nie jest polaczony z serwerem, wyslano urzadzenia ze wszystkich serwerow).');
+                    if (result.repostSkipped > 0) {
+                        str += ` Pominieto monitory skrzynek z innych serwerow: ${result.repostSkipped}.`;
+                    }
                 }
                 if (result.failed > 0) str += ` Bledy: ${result.failed}, szczegoly w logu.`;
                 if (result.sourceErrors.length > 0) str += ` Nie udalo sie pobrac: ${result.sourceErrors.join('; ')}.`;
