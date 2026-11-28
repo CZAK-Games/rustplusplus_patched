@@ -42,39 +42,6 @@ A NodeJS Discord Bot that uses the [rustplus.js](https://github.com/liamcottle/r
 
 > Documentation can be found [here](https://github.com/faithix/rustplusplus/blob/master/docs/documentation.md). The documentation explains the features as well as `how to setup the bot`, so make sure to take a look at it 😉
 
-## **Credentials**
-
-> You can get your credentials by running the `rustplusplus credential application`. Download it [here](https://github.com/alexemanuelol/rustplusplus-credential-application/releases/download/v1.4.0/rustplusplus-1.4.0-win-x64.exe)
-
-
-## **How to run the bot**
-
-> To run the bot, simply open the terminal of your choice and run the following from repository root:
-
-    $ npm start run
-
-
-## **How to update the repository**
-
-> Depending on your OS / choice of terminal you can run:
-
-    $ update.bat
-
-or
-
-    $ ./update.sh
-
-
-## **Running via docker**
-
-    $ docker run --rm -it -v ${pwd}/credentials:/app/credentials -v ${pwd}/instances:/app/instances -v ${pwd}/logs:/app/logs -e RPP_DISCORD_CLIENT_ID=111....1111 -e RPP_DISCORD_TOKEN=token --name rpp ghcr.io/faithix/rustplusplus
-
-or
-
-    $ docker-compose up -d
-
-Make sure you use the correct values for DISCORD_CLIENT_ID as well as DISCORD_TOKEN in the docker command/docker-compose.yml
-
 ## **Thanks to**
 
 **liamcottle**@GitHub - for the [rustplus.js](https://github.com/liamcottle/rustplus.js) library.
